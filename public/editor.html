@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#11141a" />
+    <title>卡牌编辑器</title>
+    <meta
+      name="description"
+      content="手动修改当前单关炉石风游戏的卡牌名称、数值、文本和效果。"
+    />
+    <link rel="stylesheet" href="/editor.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero card">
+        <div>
+          <p class="eyebrow">Card Editor</p>
+          <h1>手动改卡牌</h1>
+          <p class="lede">
+            这里可以直接改卡牌的名字、费用、身材、条件机制和文本。上面的数值字段会自动同步文字，只有复杂效果才需要碰 JSON。保存后回到游戏点“重新开始”即可使用新卡牌。
+          </p>
+        </div>
+        <div class="hero-actions">
+          <a class="top-link" href="/">返回游戏</a>
+          <a class="top-link" href="/agents">查看日志</a>
+        </div>
+      </header>
+
+      <main class="layout">
+        <aside class="card card-list-panel">
+          <div class="panel-head">
+            <div>
+              <p class="section-label">卡牌列表</p>
+              <h2>选择要修改的卡</h2>
+            </div>
+            <div class="toolbar-actions">
+              <button id="new-spell-button" type="button" class="secondary-button">新建法术模板</button>
+              <button id="new-minion-button" type="button" class="secondary-button">新建随从模板</button>
+              <button id="reset-all-button" type="button" class="secondary-button">重置全部修改</button>
+            </div>
+          </div>
+          <div id="card-list" class="card-list"></div>
+        </aside>
+
+        <section class="editor-stack">
+          <section class="card editor-panel">
+            <div class="panel-head">
+              <div>
+                <p class="section-label">编辑窗口</p>
+                <h2 id="editor-title">选择一张卡</h2>
+              </div>
+              <div class="status-chip" id="editor-status">未保存</div>
+            </div>
+
+            <form id="card-form" class="editor-form">
+              <label>
+                <span>卡牌 ID</span>
+                <input id="field-id" name="id" type="text" readonly />
+              </label>
+              <label>
+                <span>名称</span>
+                <input id="field-name" name="name" type="text" />
+              </label>
+              <label>
+                <span>费用</span>
+                <input id="field-cost" name="cost" type="number" min="0" max="20" />
+              </label>
+              <label>
+                <span>类型</span>
+                <select id="field-type" name="type">
+                  <option value="spell">法术</option>
+                  <option value="minion">随从</option>
+                </select>
+              </label>
+              <label>
+                <span>启用状态</span>
+                <select id="field-enabled" name="enabled">
+                  <option value="true">启用</option>
+                  <option value="false">禁用</option>
+                </select>
+              </label>
+              <label>
+                <span>起始牌组数量</span>
+                <input id="field-deck-count" name="deckCount" type="number" min="0" max="30" />
+              </label>
+              <label>
+                <span>文本同步</span>
+                <select id="field-auto-text" name="autoText">
+                  <option value="true">自动同步</option>
+                  <option value="false">手动编辑</option>
+                </select>
+              </label>
+              <label>
+                <span>攻击</span>
+                <input id="field-attack" name="attack" type="number" min="0" max="30" />
+              </label>
+              <label>
+                <span>生命</span>
+                <input id="field-health" name="health" type="number" min="1" max="60" />
+              </label>
+              <label class="form-span">
+                <span>随从关键词</span>
+                <div class="keyword-checkboxes">
+                  <label class="keyword-option"><input type="checkbox" name="keywords" value="taunt" /> 嘲讽</label>
+                  <label class="keyword-option"><input type="checkbox" name="keywords" value="poisonous" /> 剧毒</label>
+                  <label class="keyword-option"><input type="checkbox" name="keywords" value="divineShield" /> 圣盾</label>
+                  <label class="keyword-option"><input type="checkbox" name="keywords" value="lifesteal" /> 吸血</label>
+                  <label class="keyword-option"><input type="checkbox" name="keywords" value="windfury" /> 风怒</label>
+                  <label class="keyword-option"><input type="checkbox" name="keywords" value="reborn" /> 复生</label>
+                </div>
+              </label>
+              <label>
+                <span>伤害量</span>
+                <input id="field-damage" name="damage" type="number" min="0" max="99" />
+              </label>
+              <label>
+                <span>法术目标</span>
+                <select id="field-damage-target" name="damageTarget">
+                  <option value="enemyHero">敌方英雄</option>
+                  <option value="enemyMinion">敌方随从</option>
+                  <option value="friendlyHero">己方英雄</option>
+                  <option value="friendlyMinion">己方随从</option>
+                  <option value="playerChoice">由玩家决定</option>
+                </select>
+              </label>
+              <label>
+                <span>治疗量</span>
+                <input id="field-heal" name="heal" type="number" min="0" max="99" />
+              </label>
+              <label>
+                <span>护甲量</span>
+                <input id="field-armor" name="armor" type="number" min="0" max="99" />
+              </label>
+              <label>
+                <span>抽牌量</span>
+                <input id="field-draw" name="draw" type="number" min="0" max="20" />
+              </label>
+              <label>
+                <span>召唤数量</span>
+                <input id="field-summon-count" name="summonCount" type="number" min="0" max="7" />
+              </label>
+              <label>
+                <span>召唤名称</span>
+                <input id="field-summon-name" name="summonName" type="text" />
+              </label>
+              <label>
+                <span>召唤攻击</span>
+                <input id="field-summon-attack" name="summonAttack" type="number" min="0" max="30" />
+              </label>
+              <label>
+                <span>召唤生命</span>
+                <input id="field-summon-health" name="summonHealth" type="number" min="1" max="60" />
+              </label>
+              <label class="form-span">
+                <span>召唤随从关键词</span>
+                <div class="keyword-checkboxes">
+                  <label class="keyword-option"><input type="checkbox" name="summonKeywords" value="taunt" /> 嘲讽</label>
+                  <label class="keyword-option"><input type="checkbox" name="summonKeywords" value="poisonous" /> 剧毒</label>
+                  <label class="keyword-option"><input type="checkbox" name="summonKeywords" value="divineShield" /> 圣盾</label>
+                  <label class="keyword-option"><input type="checkbox" name="summonKeywords" value="lifesteal" /> 吸血</label>
+                  <label class="keyword-option"><input type="checkbox" name="summonKeywords" value="windfury" /> 风怒</label>
+                  <label class="keyword-option"><input type="checkbox" name="summonKeywords" value="reborn" /> 复生</label>
+                </div>
+              </label>
+              <label>
+                <span>群体增攻</span>
+                <input id="field-buff-attack" name="buffAttack" type="number" min="0" max="20" />
+              </label>
+              <label>
+                <span>群体增血</span>
+                <input id="field-buff-health" name="buffHealth" type="number" min="0" max="20" />
+              </label>
+              <label>
+                <span>条件触发</span>
+                <select id="field-condition" name="condition">
+                  <option value="">无</option>
+                  <option value="controlsMinion">如果你的场上有随从</option>
+                  <option value="controlsNoMinion">如果你的场上没有随从</option>
+                </select>
+              </label>
+              <label>
+                <span>条件奖励类型</span>
+                <select id="field-condition-type" name="conditionType">
+                  <option value="">无</option>
+                  <option value="damage">额外伤害</option>
+                  <option value="heal">额外治疗</option>
+                  <option value="armor">额外护甲</option>
+                  <option value="draw">额外抽牌</option>
+                </select>
+              </label>
+              <label>
+                <span>条件目标</span>
+                <select id="field-condition-target" name="conditionTarget">
+                  <option value="enemyHero">敌方英雄</option>
+                  <option value="friendlyHero">己方英雄</option>
+                  <option value="samePrimary">相同目标</option>
+                  <option value="playerChoice">由玩家决定</option>
+                </select>
+              </label>
+              <label>
+                <span>条件奖励值</span>
+                <input id="field-condition-amount" name="conditionAmount" type="number" min="0" max="99" />
+              </label>
+              <label class="form-span">
+                <span>显示文本（自动同步开启时会跟着上面的字段变化）</span>
+                <textarea id="field-text" name="text" rows="3"></textarea>
+              </label>
+              <label class="form-span">
+                <span>额外效果 JSON（放无法用上面字段表达的高级效果）</span>
+                <textarea id="field-effects" name="effects" rows="10"></textarea>
+              </label>
+            </form>
+
+            <div class="button-row">
+              <button id="save-card-button" type="button" class="primary-button">保存这张卡</button>
+              <button id="reset-card-button" type="button" class="secondary-button">重置这张卡</button>
+              <button id="apply-all-button" type="button" class="secondary-button">保存全部到游戏</button>
+            </div>
+          </section>
+
+          <section class="card preview-panel">
+            <div class="panel-head">
+              <div>
+                <p class="section-label">即时预览</p>
+                <h2>这张卡现在会怎么显示</h2>
+              </div>
+            </div>
+
+            <div id="preview-card" class="preview-card"></div>
+            <pre id="preview-json" class="preview-json"></pre>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/editor.js"></script>
+  </body>
+</html>

@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#120b07" />
+    <title>炉边酒馆 LAN 对决</title>
+    <meta
+      name="description"
+      content="单关炉石风 LAN 网页游戏的响应式前端壳子，适合电脑与手机同局域网游玩。"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="lobby-page">
+    <div class="app-shell">
+
+      <!-- 大厅覆盖层 -->
+      <div id="lobby-overlay" class="lobby-overlay">
+        <!-- 局域网对战选择 -->
+        <div id="pvp-select" class="lobby-modal">
+          <div class="lobby-header">
+            <h2>🏰 炉边酒馆</h2>
+            <p class="lobby-subtitle">局域网双人对战</p>
+          </div>
+
+          <div class="mode-buttons">
+            <button id="btn-create-room" class="mode-btn">
+              <span class="mode-icon">🏠</span>
+              <div class="mode-info">
+                <span class="mode-title">创建房间</span>
+                <span class="mode-desc">作为房主，等待对手加入</span>
+              </div>
+            </button>
+
+            <button id="btn-show-join" class="mode-btn">
+              <span class="mode-icon">🚪</span>
+              <div class="mode-info">
+                <span class="mode-title">加入房间</span>
+                <span class="mode-desc">输入房间号加入对战</span>
+              </div>
+            </button>
+
+            <button id="btn-start-test" class="mode-btn">
+              <span class="mode-icon">🧪</span>
+              <div class="mode-info">
+                <span class="mode-title">本地测试版</span>
+                <span class="mode-desc">一个人测试，对手每回合 +5 护甲并召唤 1 个 2/2</span>
+              </div>
+            </button>
+          </div>
+
+          <div class="lobby-footer">
+            <p>卡组编辑器：<a href="/editor">打开编辑器</a></p>
+          </div>
+        </div>
+
+        <!-- 创建房间 -->
+        <div id="create-room-section" class="lobby-modal" style="display: none;">
+          <h2>🎮 创建房间</h2>
+          <p class="lobby-subtitle">你将作为房主，等待对手加入</p>
+
+          <div class="deck-preview-box">
+            <h3>你的卡组</h3>
+            <p>总数量: <span id="deck-total-count">0</span> 张</p>
+            <ul id="deck-card-list" class="deck-card-list"></ul>
+          </div>
+
+          <div class="lobby-actions">
+            <button id="btn-do-create" class="action-btn action-btn--primary">创建房间</button>
+            <button id="btn-back-from-create" class="action-btn action-btn--ghost">返回</button>
+          </div>
+        </div>
+
+        <!-- 加入房间 -->
+        <div id="join-room-section" class="lobby-modal" style="display: none;">
+          <h2>🔗 加入房间</h2>
+          <p class="lobby-subtitle">输入房主提供的4位房间号</p>
+
+          <div class="join-form">
+            <input type="text" id="input-room-code" maxlength="4" placeholder="ABCD" class="room-code-input" />
+            <button id="btn-join-room" class="action-btn action-btn--primary">加入</button>
+          </div>
+
+          <button id="btn-back-from-join" class="action-btn action-btn--ghost">返回</button>
+        </div>
+
+        <!-- 等待房间 -->
+        <div id="waiting-room-section" class="lobby-modal" style="display: none;">
+          <h2>⏳ 等待对手</h2>
+          <p id="waiting-room-status" class="lobby-subtitle">房间已创建，请分享房间号给对手</p>
+
+          <div class="room-code-display">
+            <span class="room-code-label">房间号</span>
+            <span id="display-room-code" class="room-code-value">????</span>
+            <button id="copy-code-btn" class="action-btn action-btn--ghost">复制房间号</button>
+          </div>
+
+          <div id="room-status" class="room-status">
+            <p>等待对手加入...</p>
+            <div class="loading-dots"></div>
+          </div>
+
+          <div class="lobby-actions">
+            <button id="btn-ready" class="action-btn action-btn--primary" style="display: none;">准备就绪</button>
+            <button id="btn-leave-room" class="action-btn action-btn--ghost">退出房间</button>
+          </div>
+        </div>
+      </div>
+
+      <header class="masthead panel">
+        <div class="masthead-copy">
+          <p class="eyebrow">ClawTeam LAN Hearthstone</p>
+          <h1 id="hero-title">炉边酒馆 · 单关决斗</h1>
+          <p class="lede">
+            同一局域网里的电脑和手机都能打开这张桌子，一局打完就结束。
+            这里先把酒馆、木桌、金属边框和法术氛围搭好，后续逻辑可直接接入。
+          </p>
+        </div>
+
+        <div class="status-bar" id="status-bar" role="status" aria-live="polite">
+          <div class="status-item">
+            <span>连接</span>
+            <strong id="connection-status">等待连接</strong>
+          </div>
+          <div class="status-item">
+            <span>对局</span>
+            <strong id="match-status">大厅</strong>
+          </div>
+          <div class="status-item">
+            <span>回合</span>
+            <strong id="turn-status">等待开始</strong>
+          </div>
+        </div>
+
+        <!-- PvP回合指示器 -->
+        <div id="pvp-turn-indicator" class="pvp-turn-indicator" style="display: none;">回合指示</div>
+      </header>
+
+      <main id="game-area" class="content-grid">
+        <section class="playfield">
+          <article
+            class="hero-panel hero-panel--enemy panel"
+            id="enemy-hero-area"
+            data-side="enemy"
+          >
+            <div class="hero-panel__frame">
+              <div class="hero-avatar hero-avatar--enemy" aria-hidden="true"></div>
+              <div class="hero-copy">
+                <p class="section-label">敌方英雄区</p>
+                <h2 class="hero-name" id="enemy-hero-name">等待接入</h2>
+                <p class="hero-note" id="enemy-hero-note">
+                  敌方英雄状态、生命值与护甲会在这里显示。
+                </p>
+              </div>
+              <div class="hero-resources" aria-label="敌方资源">
+                <span class="resource-pill resource-pill--health" id="enemy-health">
+                  30
+                </span>
+                <span class="resource-pill resource-pill--armor" id="enemy-armor">
+                  0
+                </span>
+                <span class="resource-pill resource-pill--mana" id="enemy-mana">
+                  0 / 0
+                </span>
+              </div>
+            </div>
+          </article>
+
+          <section
+            class="battlefield-zone panel"
+            id="battlefield-zone"
+            data-zone="battlefield"
+          >
+            <div class="section-heading">
+              <div>
+                <p class="section-label">战场区</p>
+                <h2 class="section-title">桌面战场</h2>
+              </div>
+              <div class="zone-hint">拖拽、点击或由脚本接管</div>
+            </div>
+
+            <div class="battlefield-surface">
+              <div class="battle-lane battle-lane--enemy" id="enemy-board-lane">
+                <div class="lane-label">敌方随从区</div>
+              </div>
+
+              <div class="battle-center">
+                <div class="battle-ring battle-ring--top"></div>
+                <div class="battle-ring battle-ring--bottom"></div>
+              </div>
+
+              <div class="battle-lane battle-lane--player" id="player-board-lane">
+                <div class="lane-label">玩家随从区</div>
+              </div>
+            </div>
+          </section>
+
+          <article
+            class="hero-panel hero-panel--player panel"
+            id="player-hero-area"
+            data-side="player"
+          >
+            <div class="hero-panel__frame">
+              <div class="hero-avatar hero-avatar--player" aria-hidden="true"></div>
+              <div class="hero-copy">
+                <p class="section-label">玩家英雄区</p>
+                <h2 class="hero-name" id="player-hero-name">等待加入</h2>
+                <p class="hero-note" id="player-hero-note">
+                  这里承载玩家头像、生命值、护甲与法力水晶。
+                </p>
+              </div>
+              <div class="hero-resources" aria-label="玩家资源">
+                <span class="resource-pill resource-pill--health" id="player-health">
+                  30
+                </span>
+                <span class="resource-pill resource-pill--armor" id="player-armor">
+                  0
+                </span>
+                <span class="resource-pill resource-pill--mana" id="player-mana">
+                  0 / 0
+                </span>
+              </div>
+            </div>
+          </article>
+
+          <section class="hand-zone panel" id="hand-zone" data-zone="hand">
+            <div class="section-heading">
+              <div>
+                <p class="section-label">手牌区</p>
+                <h2 class="section-title">手牌架</h2>
+              </div>
+              <div class="zone-hint">手机横向滑动，电脑可鼠标拖动</div>
+            </div>
+
+            <div class="hand-track" id="hand-cards" aria-live="polite"></div>
+          </section>
+
+          <section class="button-zone panel" id="button-zone" data-zone="actions">
+            <button id="restart-button" type="button" class="action-button action-button--ghost">
+              重新开始
+            </button>
+            <button id="end-turn-button" type="button" class="action-button action-button--primary">
+              结束回合
+            </button>
+            <a href="/editor" class="action-button action-button--ghost">
+              卡牌编辑器
+            </a>
+          </section>
+        </section>
+
+        <aside class="utility-stack">
+          <section class="lan-card panel" id="lan-address" data-zone="lan">
+            <div class="section-heading">
+              <div>
+                <p class="section-label">LAN 地址区</p>
+                <h2 class="section-title">局域网入口</h2>
+              </div>
+              <div class="zone-hint">电脑和手机都打开这个地址</div>
+            </div>
+
+            <div class="lan-display">
+              <span class="lan-label">当前地址</span>
+              <code id="lan-address-value" class="lan-code">等待房间地址</code>
+            </div>
+
+            <p class="lane-note">
+              同一局域网中的设备都可以直接打开这里显示的地址访问游戏。
+            </p>
+            <p class="lane-note">
+              如果你要手动改卡牌数值和效果，可以打开 <a href="/editor">/editor</a>。
+            </p>
+          </section>
+
+          <section class="log-zone panel" id="log-zone" data-zone="log">
+            <div class="section-heading">
+              <div>
+                <p class="section-label">日志区</p>
+                <h2 class="section-title">战斗日志</h2>
+              </div>
+              <div class="zone-hint">按时间顺序滚动显示</div>
+            </div>
+
+            <ol id="combat-log" class="log-list" aria-live="polite"></ol>
+          </section>
+
+          <section class="hint-zone panel" id="hint-zone" data-zone="tips">
+            <div class="section-heading">
+              <div>
+                <p class="section-label">提示区</p>
+                <h2 class="section-title">游玩提示</h2>
+              </div>
+            </div>
+
+            <ul class="tip-list">
+              <li>这是一局定胜负的 LAN 单关玩法，界面会优先照顾手机操作。</li>
+              <li>手牌、战场、英雄区都预留了直接接线的容器与 id。</li>
+              <li>按钮区会在窄屏上自动变成更适合拇指点击的布局。</li>
+            </ul>
+          </section>
+        </aside>
+      </main>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

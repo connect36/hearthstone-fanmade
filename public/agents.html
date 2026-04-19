@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0d1117" />
+    <title>ClawTeam 工作记录</title>
+    <meta
+      name="description"
+      content="查看本次单关炉石风局域网游戏项目中，Manager 与 A/B/C/D 的当前状态和详细工作记录。"
+    />
+    <link rel="stylesheet" href="/agents.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero card">
+        <div class="hero-copy">
+          <p class="eyebrow">ClawTeam Project Log</p>
+          <h1 id="page-title">ClawTeam 工作记录</h1>
+          <p class="lede" id="page-subtitle">
+            这里专门展示 Manager 与各个 agent 的当前状态、职责、交付内容和详细工作记录。
+          </p>
+        </div>
+        <div class="hero-actions">
+          <a class="link-button" href="/">返回游戏</a>
+        </div>
+      </header>
+
+      <section class="overview-grid">
+        <article class="card stat-card">
+          <span class="stat-label">最后更新时间</span>
+          <strong class="stat-value" id="last-updated">--</strong>
+        </article>
+        <article class="card stat-card">
+          <span class="stat-label">Agent 数量</span>
+          <strong class="stat-value" id="agent-count">--</strong>
+        </article>
+        <article class="card stat-card">
+          <span class="stat-label">状态概览</span>
+          <strong class="stat-value" id="status-summary">--</strong>
+        </article>
+        <article class="card stat-card">
+          <span class="stat-label">最新交互</span>
+          <strong class="stat-value" id="latest-interaction">--</strong>
+        </article>
+      </section>
+
+      <section class="card summary-card">
+        <p class="section-label">项目说明</p>
+        <h2>当前状态</h2>
+        <p id="project-summary" class="copy-block"></p>
+      </section>
+
+      <section class="board-grid">
+        <section class="card board-card">
+          <div class="board-card__head">
+            <div>
+              <p class="section-label">当前状态面板</p>
+              <h2>谁现在在做什么</h2>
+            </div>
+          </div>
+          <div id="status-board" class="status-board"></div>
+        </section>
+
+        <section class="card board-card">
+          <div class="board-card__head">
+            <div>
+              <p class="section-label">交互时间线</p>
+              <h2>你、manager 和 agents 怎么沟通</h2>
+            </div>
+          </div>
+          <div id="interaction-feed" class="interaction-feed"></div>
+        </section>
+      </section>
+
+      <section class="card board-card">
+        <div class="board-card__head">
+          <div>
+            <p class="section-label">原始日志</p>
+            <h2>不解释，直接看原文</h2>
+          </div>
+        </div>
+        <div id="raw-log-list" class="raw-log-list"></div>
+      </section>
+
+      <main class="record-stack" id="record-stack"></main>
+    </div>
+
+    <script type="module" src="/agents-app.js"></script>
+  </body>
+</html>
