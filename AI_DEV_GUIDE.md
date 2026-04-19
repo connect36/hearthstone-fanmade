@@ -1,16 +1,16 @@
-# 炉边酒馆 · 开发与维护指南
+# Fireside Tavern · Development and Maintenance Guide
 
-## 项目根目录
+## Project Root
 
 - `/Users/ruiliu/Documents/New project/clawteam-lan-hearthstone`
 
-## 技术栈
+## Tech Stack
 
-- 后端：Node.js 原生 HTTP + `ws`
-- 前端：原生 HTML / CSS / JavaScript ES Modules
-- 数据：卡牌基础数据 + 浏览器本地覆盖 + PvP 服务端运行时状态
+- Backend: native Node.js HTTP + `ws`
+- Frontend: plain HTML / CSS / JavaScript ES Modules
+- Data: base card data + browser-local overrides + server-side PvP runtime state
 
-## 启动方式
+## Start the Project
 
 ```bash
 cd "/Users/ruiliu/Documents/New project/clawteam-lan-hearthstone"
@@ -18,26 +18,26 @@ npm install
 npm start
 ```
 
-常用测试端口：
+Common test port:
 
 ```bash
 PORT=3301 npm start
 ```
 
-## 路由与页面
+## Routes and Pages
 
 - `/`
-  主游戏页，包含单关 Boss、单人测试版、LAN PvP
+  Main game page with Boss mode, Local Test Mode, and LAN PvP
 - `/editor`
-  卡牌编辑器
+  Card editor
 - `/agents`
-  工作日志与协作记录页
+  Work log and collaboration page
 - `/api/meta`
-  返回局域网访问信息
+  Returns LAN address metadata
 - `/api/healthz`
-  返回服务健康状态
+  Returns service health information
 
-## 目录结构
+## Directory Layout
 
 ```text
 clawteam-lan-hearthstone/
@@ -70,236 +70,236 @@ clawteam-lan-hearthstone/
 └── package.json
 ```
 
-## 关键模块分工
+## Core Module Responsibilities
 
 ### [public/game-data.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/game-data.js:1)
 
-负责：
+Responsible for:
 
-- 默认卡牌数据
-- 默认牌组构成
-- 单机关卡基础配置
+- default card data
+- default deck composition
+- base solo scenario configuration
 
-适合在这里改：
+Good place to change:
 
-- 默认卡牌
-- 默认牌组数量
-- Boss 关卡基础配置
+- default cards
+- default deck counts
+- base boss encounter setup
 
 ### [public/card-overrides.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/card-overrides.js:1)
 
-负责：
+Responsible for:
 
-- 浏览器本地覆盖配置
-- 编辑器改动落地
-- 自定义卡牌覆盖默认数据
+- browser-local override storage
+- editor persistence
+- overlaying custom cards on top of default data
 
 ### [public/editor.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.js:1)
 
-负责：
+Responsible for:
 
-- 编辑器的结构化表单
-- `editorModel` 状态管理
-- 自动描述生成
-- 覆盖数据的保存与加载
+- structured editor form state
+- `editorModel`
+- auto text generation
+- loading and saving override data
 
-关键原则：
+Key rule:
 
-- 结构化字段是第一真源
-- 描述文本应该从结构化字段生成，而不是反过来驱动结构化字段
+- structured fields are the first source of truth
+- card text should be generated from structure, not used to drive structure backwards
 
 ### [public/keywords.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/keywords.js:1)
 
-负责：
+Responsible for:
 
-- 关键词定义
-- 关键词排序
-- 随从运行时关键词辅助逻辑
+- keyword definitions
+- keyword ordering
+- minion runtime keyword helpers
 
-如果要加新关键词，优先先改这里。
+If a new keyword is needed, start here.
 
 ### [public/app.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/app.js:1)
 
-负责：
+Responsible for:
 
-- 主页面 UI 渲染
-- 单机关卡逻辑
-- 本地测试版逻辑
-- PvP 客户端交互
-- 目标高亮
-- 本地保存与恢复
+- main page rendering
+- solo gameplay
+- local test mode
+- PvP client interactions
+- target highlighting
+- local save / restore logic
 
-这是当前变动最多的文件。
+This is currently the highest-churn file in the project.
 
 ### [public/network.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/network.js:1)
 
-负责：
+Responsible for:
 
-- WebSocket 连接
-- 浏览器稳定 `clientId`
-- PvP 消息分发
-- 断线恢复时的身份保持
+- WebSocket connection handling
+- stable browser `clientId`
+- PvP message dispatch
+- reconnect identity preservation
 
 ### [server/game-engine.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/game-engine.mjs:1)
 
-负责：
+Responsible for:
 
-- PvP 权威结算
-- 出牌、攻击、结束回合
-- 法术目标合法性
-- 关键词效果
-- 死亡、复生、圣盾等战斗逻辑
+- server-authoritative PvP resolution
+- play card / attack / end turn
+- spell target validation
+- keyword effects
+- death / reborn / Divine Shield combat logic
 
-只要是“联机里真正算不算数”的规则，最终都要以这里为准。
+If a rule must truly count in multiplayer, it ultimately needs to be correct here.
 
 ### [server/protocol.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/protocol.mjs:1)
 
-负责：
+Responsible for:
 
-- 房间和对局消息结构
-- 按玩家过滤状态
-- 避免把不该看到的手牌/牌库信息发给对手
+- room and game message structures
+- per-player filtered state
+- preventing hidden hand/deck information from leaking to the opponent
 
 ### [server/rooms.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/rooms.mjs:1)
 
-负责：
+Responsible for:
 
-- 房间创建、加入、离开、解散
-- 玩家与房间映射
-- 断线后的房间清理与恢复窗口管理
+- room creation / join / leave / dissolve
+- room and player mapping
+- reconnect cleanup and grace-window handling
 
 ### [server.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server.mjs:1)
 
-负责：
+Responsible for:
 
-- HTTP 入口
-- 静态资源路由
-- `/editor`、`/agents` 等页面分发
-- WebSocket 入口与消息路由
+- HTTP entrypoint
+- static routing
+- `/editor`, `/agents`, and API routing
+- WebSocket entry and message routing
 
-## 新功能添加建议
+## Adding New Features
 
-### 添加新卡牌
+### Add a New Card
 
-优先路径：
+Preferred path:
 
-1. 在 [public/game-data.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/game-data.js:1) 增加默认卡牌
-2. 如果只想本地改而不改默认数据，也可以用 `/editor`
+1. add the default card in [public/game-data.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/game-data.js:1)
+2. if the change should stay local instead of modifying defaults, use `/editor`
 
-### 添加新效果类型
+### Add a New Effect Type
 
-至少要检查三处：
+At minimum, check these three layers:
 
-1. 编辑器是否需要结构化字段
-2. 单机逻辑是否支持
-3. PvP 服务端是否支持
+1. does the editor need a structured field for it?
+2. does solo runtime support it?
+3. does the PvP server support it?
 
-通常会涉及：
-
-- [public/editor.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.js:1)
-- [public/app.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/app.js:1)
-- [server/game-engine.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/game-engine.mjs:1)
-
-### 添加新关键词
-
-建议顺序：
-
-1. 先在 [public/keywords.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/keywords.js:1) 定义
-2. 再接入单机运行时
-3. 再接入 PvP 服务端
-4. 最后补编辑器勾选 UI
-
-### 修改目标系统
-
-目标系统是最容易出现“编辑器能改、实战不一致”的地方。
-
-改动时必须一起看：
+This usually touches:
 
 - [public/editor.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.js:1)
 - [public/app.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/app.js:1)
 - [server/game-engine.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/game-engine.mjs:1)
 
-特别注意：
+### Add a New Keyword
 
-- `由玩家决定`
-- `相同目标`
-- 友方 / 敌方 / 英雄 / 随从区分
-- 前端高亮与服务端合法性校验保持一致
+Recommended order:
 
-## 保存与恢复机制
+1. define it in [public/keywords.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/keywords.js:1)
+2. wire it into solo runtime
+3. wire it into the PvP server
+4. add editor UI support
 
-### 单人模式
+### Change the Targeting System
 
-单人 `Boss / 本地测试版` 会把局面保存在浏览器本地。
+Targeting is the easiest area to desynchronize between editor and runtime.
 
-如果改这里，要重点看：
+Always review all of:
 
-- `localStorage` key 设计
-- URL 参数同步
-- 重开 / 重新开始时是否会清错状态
+- [public/editor.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.js:1)
+- [public/app.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/app.js:1)
+- [server/game-engine.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/game-engine.mjs:1)
 
-### PvP 模式
+Pay extra attention to:
 
-PvP 依赖：
+- `player choice`
+- `same target`
+- friendly / enemy / hero / minion distinctions
+- keeping client highlighting aligned with server legality checks
+
+## Save and Resume Notes
+
+### Solo Modes
+
+Solo `Boss` and `Local Test Mode` save board state in browser local storage.
+
+If you change this area, verify:
+
+- `localStorage` key design
+- URL parameter sync
+- whether restart / replay clears the correct state
+
+### PvP
+
+PvP resume depends on:
 
 - `clientId`
-- 房间号
-- 服务端恢复窗口
+- room id
+- the server-side reconnect window
 
-如果动了这些逻辑，要重点回归：
+If you change any of this, re-test:
 
-- 等待房间时刷新
-- 游戏进行中刷新
-- 房主退出
-- 非房主退出
-- 房间解散
+- refresh while waiting in a room
+- refresh during an active match
+- host exit
+- guest exit
+- room dissolution
 
-## UI 修改注意点
+## UI Editing Notes
 
-### 主页面
+### Main Page
 
-主页面的元素需要同时检查：
+For main page UI changes, check all three:
 
 - [public/index.html](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/index.html:1)
 - [public/styles.css](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/styles.css:1)
 - [public/app.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/app.js:1)
 
-### 编辑器页面
+### Editor Page
 
-编辑器相关改动需要同时检查：
+For editor changes, check all three:
 
 - [public/editor.html](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.html:1)
 - [public/editor.css](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.css:1)
 - [public/editor.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.js:1)
 
-### `/agents` 页面
+### `/agents` Page
 
-如果改日志页或展示结构，同时检查：
+For log-page display changes, check:
 
 - [public/agents.html](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/agents.html:1)
 - [public/agents.css](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/agents.css:1)
 - [public/agents-app.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/agents-app.js:1)
 - [public/agent-worklog.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/agent-worklog.js:1)
 
-## 推荐测试清单
+## Recommended Regression Checklist
 
-改完代码后，至少回归这些：
+After changing code, at least re-check:
 
-- 单关 Boss 能正常开始
-- 本地测试版能正常开始
-- 建房 / 加入房间正常
-- 双方准备后能进入对局
-- 法术目标高亮正确
-- `由玩家决定` 能选任意合法目标
-- `相同目标` 跟随主目标
-- `圣盾 / 剧毒 / 吸血 / 风怒 / 复生 / 嘲讽` 正常
-- 单人刷新后能恢复
-- PvP 刷新后能恢复到房间或当前对局
-- 手机窄屏布局没有明显错位
+- Boss mode starts correctly
+- Local Test Mode starts correctly
+- room creation and room join work
+- both players can enter the match after readying up
+- spell target highlighting is correct
+- `player choice` can select any legal target
+- `same target` follows the primary target
+- `Divine Shield / Poisonous / Lifesteal / Windfury / Reborn / Taunt` all work
+- solo refresh restores progress
+- PvP refresh restores the room or active match
+- narrow mobile layouts do not visibly break
 
-## 推荐命令
+## Useful Commands
 
-### 语法检查
+### Syntax Checks
 
 ```bash
 node --check public/app.js
@@ -312,28 +312,28 @@ node --check server/rooms.mjs
 node --check server.mjs
 ```
 
-### 启动服务
+### Start the Server
 
 ```bash
 PORT=3301 npm start
 ```
 
-### 健康检查
+### Basic Health Checks
 
 ```bash
 curl -I http://127.0.0.1:3301/
 curl http://127.0.0.1:3301/api/healthz
 ```
 
-## 文档维护规则
+## Documentation Maintenance Rule
 
-改功能时建议同步更新：
+When features change, update these together when appropriate:
 
 - [README.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/README.md:1)
-  面向人类读者的总览
+  Human-facing overview
 - [AI_CONCLUSION.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_CONCLUSION.md:1)
-  当前稳定状态
+  Stable current state
 - [AI_PROCESS.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_PROCESS.md:1)
-  调试和迭代经过
+  Process and debugging history
 - [GITHUB_PUBLISH.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/GITHUB_PUBLISH.md:1)
-  发布状态与 GitHub 最后一步
+  Publication status and GitHub notes

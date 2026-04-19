@@ -1,231 +1,232 @@
-# 炉边酒馆 · 开发过程记录
+# Fireside Tavern · Development Process Log
 
-## 项目根目录
+## Project Root
 
 - `/Users/ruiliu/Documents/New project/clawteam-lan-hearthstone`
 
-## 文档分工
+## Document Scope
 
-这个文件只记录：
+This file only records:
 
-- 做了什么
-- 为什么这么改
-- 修过哪些问题
-- 做过哪些验证
+- what changed
+- why it changed
+- which bugs were fixed
+- what was validated
 
-当前稳定状态请看：
+For the current stable state, see:
 
 - [AI_CONCLUSION.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_CONCLUSION.md:1)
 
-发布与 GitHub 交接请看：
+For GitHub publication status, see:
 
 - [GITHUB_PUBLISH.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/GITHUB_PUBLISH.md:1)
 
-## 主要开发阶段
+## Main Development Stages
 
-### 1. 基础游戏与局域网访问
+### 1. Base Game and LAN Access
 
-先搭出了一个浏览器里的炉石风小游戏，核心目标是：
+The project started as a browser-based Hearthstone-style mini game with three core goals:
 
-- 电脑和手机都能打开
-- 同一局域网内设备都能访问
-- 不依赖前端框架
+- desktop and mobile support
+- LAN accessibility
+- no frontend framework dependency
 
-这一阶段主要完成了：
+This stage established:
 
-- Node 静态服务与页面路由
-- `0.0.0.0` 监听
-- `/api/meta` 输出局域网地址
-- `/api/healthz` 健康检查
+- the Node static server
+- page routing
+- `0.0.0.0` listening
+- `/api/meta` for LAN address output
+- `/api/healthz` for service checks
 
-### 2. 主游戏页与 `/agents` 页面拆分
+### 2. Splitting the Main Page and `/agents`
 
-一开始 agent 信息放在游戏页里，后面拆成独立的 `/agents` 页面。
+Agent information originally lived on the main game page, then moved to a dedicated `/agents` page.
 
-原因是：
+Reasons:
 
-- 游戏页应该以玩法为主
-- agent 日志、原始交互、状态面板内容比较长
-- 侧边栏不够放完整记录
+- the main page should stay focused on gameplay
+- manager / agent logs quickly became too large for a sidebar
+- raw logs and detailed timelines needed more space
 
-后续 `/agents` 页逐步补上了：
+The `/agents` page later expanded to include:
 
-- manager / agents 当前状态
-- 交互时间线
-- 更细的任务记录
-- 原始日志区
+- manager / agents current state
+- interaction timeline
+- detailed task records
+- raw-log sections
 
-### 3. 卡牌编辑器从“数值面板”迭代成“结构化编辑器”
+### 3. Card Editor Iteration
 
-编辑器最早只能改基础数值，后面不断暴露更细的字段。
+The editor began as a simple stats/effects editor and gradually evolved into a structured editor.
 
-这一阶段遇到的主要问题：
+Problems discovered in this phase:
 
-- 上面的结构化字段和下面的描述文本会漂移
-- 保存时会把刚改过的机制字段覆盖回去
-- 一些目标逻辑只能去改 JSON
-- 自定义卡牌不一定能完整回流到运行时
+- structured fields and displayed text drifted apart
+- saving could overwrite recently edited mechanism fields
+- some targeting logic was only editable through raw JSON
+- custom cards did not always flow back into runtime correctly
 
-修正方向是：
+Fix direction:
 
-- 让 `editorModel` 成为结构化真源
-- 自动描述从结构化字段生成
-- 保存时避免 destructive re-render
-- 把常用效果和条件效果做成显式字段
+- `editorModel` became the structured source of truth
+- automatic text generation was tied to structured fields
+- save flows were adjusted to avoid destructive re-renders
+- common effect and conditional settings were surfaced as explicit fields
 
-### 4. 单人 / 局域网 PvP 的目标系统统一
+### 4. Unified Targeting Across Editor, Solo Runtime, and PvP
 
-后面重点修了一轮“编辑器里能改，但实战里不一定按这个结算”的问题。
+A major later pass focused on “the editor says one thing, but runtime resolves another.”
 
-当时发现的典型问题：
+Typical issues found:
 
-- PvP 服务端目标校验和编辑器目标能力不一致
-- `由玩家决定` 的法术不能真正自由选目标
-- `相同目标` 这类条件后续效果没有跟随第一次选中的对象
-- 法术目标高亮不完整，玩家不容易看出哪些能点
+- PvP target validation did not match editor targeting capabilities
+- `player choice` spells could not actually target any legal unit
+- `same target` follow-up effects did not track the first chosen target
+- target highlighting was incomplete and confusing
 
-最后统一成了：
+The final unified rule set:
 
-- `由玩家决定` 可以选任意英雄或任意随从，包含友方与敌方
-- `相同目标` 会跟随主效果第一次选到的目标
-- 前端所有可选目标都会高亮
-- PvP 服务端也按同样的目标规则校验和结算
+- `player choice` can select any hero or minion, friendly or enemy
+- `same target` follows the primary chosen target
+- all selectable targets are highlighted on the client
+- the PvP server validates and resolves the same target rules
 
-### 5. 局域网 PvP 基础链路修复
+### 5. LAN PvP Infrastructure Fixes
 
-双人模式加上后，又集中修了一轮联机问题。
+Once multiplayer was added, a concentrated debugging pass fixed core PvP issues.
 
-当时确认过的问题包括：
+Confirmed problems included:
 
-- 按玩家过滤状态时仍有隐藏信息泄漏风险
-- 房间状态消息个性化不正确
-- 断线、退房、解散房间流程不稳
-- 某些大厅恢复链路会访问不存在的 UI 元素
+- risk of hidden-information leakage in synchronized state
+- incorrect per-player room-state personalization
+- unstable disconnect / leave / dissolve flows
+- lobby recovery paths touching missing UI elements
 
-处理方向：
+Fix direction:
 
-- 让房间状态和对局状态按玩家各自过滤
-- 修掉 lobby 恢复路径里的未定义 UI 访问
-- 补上稳定 `playerId / clientId` 链路
-- 断线后给房间和对局一段恢复窗口
+- filter room and game state per player
+- repair lobby recovery UI paths
+- establish stable `playerId / clientId` handling
+- add a reconnect window for disconnected players
 
-### 6. 开场动画与抽牌节奏调整
+### 6. Opening Animation and Draw Rules
 
-为了更接近你指定的单关规则，开场和抽牌规则也重做过一轮。
+The opening flow and draw rules were later revised to match the requested simplified Hearthstone pattern.
 
-这一阶段实现了：
+Implemented behavior:
 
-- 接近全屏的先后手提示动画
-- 先手开局 3 张，自己第一回合开始再抽 1 张
-- 后手开局 4 张，自己第一回合开始再抽 1 张
-- 之后每回合开始都抽 1 张
-- 打出去的牌离开手牌，没打的继续留在手里
+- a near-fullscreen first/second-player intro banner
+- first player starts with 3 cards, then draws 1 at the start of their first turn
+- second player starts with 4 cards, then draws 1 at the start of their first turn
+- every later turn starts with 1 draw
+- played cards leave the hand, unplayed cards stay
 
-### 7. 关键词体系接入
+### 7. Keyword System
 
-后面增加了共享关键词模块，并同时接到单人和 PvP。
+A shared keyword module was then added and connected to both solo and PvP.
 
-实现过的关键词有：
+Implemented keywords:
 
-- `嘲讽`
-- `剧毒`
-- `复生`
-- `圣盾`
-- `吸血`
-- `风怒`
+- `Taunt`
+- `Poisonous`
+- `Reborn`
+- `Divine Shield`
+- `Lifesteal`
+- `Windfury`
 
-这一轮的重要点：
+Important implementation notes:
 
-- 关键词逻辑集中到共享模块，不再散落复制
-- 运行时随从状态开始显式跟踪 `圣盾 / 复生可用 / 已攻击次数 / 每回合攻击上限`
-- 编辑器和召唤物也能配置关键词
+- keyword behavior moved into a shared module instead of duplicated logic
+- minion runtime state started explicitly tracking shield, reborn availability, attacks used, and per-turn attack limits
+- the editor and summon tokens also gained keyword support
 
-### 8. 复生细节修复
+### 8. Reborn Edge-Case Fix
 
-在关键词体系接入后，又遇到一个很关键的规则问题：
+After keywords were added, a critical rules bug appeared:
 
-- `圣盾 + 复生` 的随从复生后，圣盾被错误清掉了
+- a `Divine Shield + Reborn` minion lost Divine Shield after reborn
 
-修正后的规则是：
+Final behavior after the fix:
 
-- 复生后保留其他关键词效果
-- 保留正常攻击力
-- 只把生命值改成 `1`
-- `复生` 本身按一次性消耗
+- reborn preserves other keyword effects
+- reborn preserves normal attack
+- only health becomes `1`
+- reborn itself is consumed once
 
-### 9. 单人测试版加入
+### 9. Local Test Mode
 
-为了让一个人也能反复验证目标、攻击、回合和关键词效果，后来加了 `本地测试版`。
+To make solo verification easier, a `Local Test Mode` was added.
 
-测试版规则是：
+Rules for this mode:
 
-- 对手名为 `测试陪练`
-- 每个敌方回合获得 `5` 点护甲
-- 每个敌方回合召唤 `1` 个 `2/2` 随从
+- opponent name: `Test Sparring Partner`
+- the opponent gains `5` armor each enemy turn
+- the opponent summons one `2/2` minion each enemy turn
 
-这样做的原因是：
+Why it was added:
 
-- 不需要第二台设备
-- 不需要总是走完整局 PvP 建房流程
-- 更适合快速验法术目标、攻击次数、关键词和回合节奏
+- no second device is required
+- no need to repeatedly run the full PvP room flow
+- much faster for validating spell targeting, attack counts, keywords, and turn flow
 
-### 10. 单人进度保存与 PvP 断线恢复
+### 10. Solo Save State and PvP Reconnect
 
-后来又补了刷新恢复能力，因为单人和联机都存在“刷新后全丢”的体验问题。
+Later, progress persistence was added because both solo and multiplayer lost all progress on refresh.
 
-最后形成的方案：
+Final approach:
 
-- 单人 `Boss / 本地测试版` 进度保存在浏览器本地
-- URL 使用不同模式参数，如 `?mode=solo&scenario=test`
-- PvP 使用稳定浏览器本地身份
-- 服务端为断线玩家保留短时间恢复窗口
-- 同一设备刷新或重新打开后会尝试回到原房间或当前对局
+- solo `Boss` and `Local Test Mode` states are saved in browser storage
+- the URL reflects mode state, for example `?mode=solo&scenario=test`
+- PvP uses a stable browser-local identity
+- the server keeps a short reconnect grace window
+- reopening on the same device attempts to resume the room or match
 
-### 11. 文档整理与 GitHub 打包准备
+### 11. Documentation Cleanup and GitHub Packaging
 
-在准备发布到 GitHub 之前，又专门做了一轮文档整理。
+Before publication, the project received a dedicated documentation pass.
 
-这轮主要做了：
+This pass included:
 
-- 重写 [README.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/README.md:1)
-- 保留并更新 `AI_PROCESS / AI_CONCLUSION / AI_DEV_GUIDE`
-- 增加发布交接文档 [GITHUB_PUBLISH.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/GITHUB_PUBLISH.md:1)
-- 补充 [.gitignore](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/.gitignore:1)
-- 在项目目录初始化独立本地 git 仓库，避免继续受外层混合工作区影响
+- rewriting [README.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/README.md:1)
+- keeping and updating `AI_PROCESS / AI_CONCLUSION / AI_DEV_GUIDE`
+- adding [GITHUB_PUBLISH.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/GITHUB_PUBLISH.md:1)
+- adding [.gitignore](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/.gitignore:1)
+- initializing a standalone git repository inside the project folder to avoid depending on the outer mixed workspace
 
-## 本轮重点修过的问题
+## Major Problems Fixed During Iteration
 
-### 编辑器问题
+### Editor Issues
 
-- 描述文本和结构化字段不同步
-- 改 `条件奖励值` 时保存后被旧值覆盖
-- 条件目标选项不够
-- 机制修改一部分只能靠手写 JSON
+- text and structured fields falling out of sync
+- `conditional reward value` being overwritten after save
+- missing conditional target options
+- some mechanics editable only through raw JSON
 
-### 目标系统问题
+### Targeting Issues
 
-- `背水一击` 等玩家自选目标法术不能真正选任意目标
-- `相同目标` 没有跟随主效果目标
-- 高亮提示不完整
+- `Last Stand` and similar player-choice spells not targeting any legal unit
+- `same target` follow-up effects not tracking the first target
+- incomplete target highlighting
 
-### PvP 问题
+### PvP Issues
 
-- 对局状态可能泄漏不该看到的信息
-- 法术目标在 PvP 里结算不一致
-- 房间状态个性化错误
-- 断线、退房、恢复过程不稳定
+- synchronized state risking hidden-information leaks
+- spell targets resolving differently in PvP
+- room-state personalization errors
+- disconnect / leave / resume instability
 
-### 规则问题
+### Rules Issues
 
-- `圣盾 + 复生` 复生后丢失圣盾
-- 关键词显示顺序不一致
-- `复生` 显示顺序后来固定放到最后
+- `Divine Shield + Reborn` losing Divine Shield after reborn
+- inconsistent keyword display order
+- `Reborn` eventually being standardized to display last
 
-## 做过的验证
+## Validation Performed
 
-### 语法检查
+### Syntax Checks
 
-多次通过 `node --check` 的文件包括：
+The following files were repeatedly checked with `node --check`:
 
 - `public/app.js`
 - `public/network.js`
@@ -236,43 +237,43 @@
 - `server/rooms.mjs`
 - `server.mjs`
 
-### 规则断言
+### Rule Assertions
 
-做过定向规则断言，覆盖过：
+Targeted assertions were run for:
 
-- `嘲讽` 限制目标
-- `圣盾` 吸收第一次伤害
-- `剧毒` 杀死受伤随从
-- `复生` 以 `1` 血复活
-- `风怒` 每回合两次攻击
-- `吸血` 为英雄回复生命
-- `由玩家决定` 目标校验
-- 友方 / 敌方 / 随从 / 英雄目标结算
-- `圣盾 + 复生 + 风怒` 复生后仍保留其他关键词
+- `Taunt` target restriction
+- `Divine Shield` absorbing the first damage instance
+- `Poisonous` killing a damaged minion
+- `Reborn` reviving at `1` health
+- `Windfury` allowing two attacks per turn
+- `Lifesteal` healing the attacking hero
+- `player choice` target validation
+- friendly / enemy / minion / hero target resolution
+- `Divine Shield + Reborn + Windfury` preserving other keywords after reborn
 
-### 恢复流程验证
+### Resume Validation
 
-额外做过 Node 级联机恢复验证：
+Additional Node-level reconnect validation covered:
 
-- 等待房间时断开再连
-- 游戏开始后断开再连
-- 同一 `clientId` 恢复原房间 / 原对局状态
+- disconnect and reconnect while waiting in a room
+- disconnect and reconnect after a game has started
+- restoring the original room or game state with the same `clientId`
 
-### 本地服务检查
+### Local Service Checks
 
-反复确认过这些地址能返回正常结果：
+The following routes were repeatedly confirmed to respond correctly:
 
 - `/`
 - `/editor`
 - `/agents`
 - `/api/healthz`
 
-常用测试端口是：
+Common test port:
 
 - `3301`
 
-## 后续维护约定
+## Ongoing Maintenance Rule
 
-- 新的实现经过、排查路径、失败尝试，继续写进这个文件
-- 当前稳定状态写进 [AI_CONCLUSION.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_CONCLUSION.md:1)
-- GitHub 发布状态和最后一步阻塞，写进 [GITHUB_PUBLISH.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/GITHUB_PUBLISH.md:1)
+- new implementation history, debugging notes, and failed attempts go here
+- the stable current state belongs in [AI_CONCLUSION.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_CONCLUSION.md:1)
+- GitHub publication status belongs in [GITHUB_PUBLISH.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/GITHUB_PUBLISH.md:1)

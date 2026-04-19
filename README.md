@@ -1,34 +1,36 @@
-# 炉边酒馆 · LAN 炉石风卡牌游戏
+# Fireside Tavern · LAN Hearthstone-Style Card Game
 
-一个基于浏览器的炉石风小游戏，包含：
+A browser-based Hearthstone-inspired mini game with:
 
-- 单人单关 Boss 战
-- 单人本地测试版
-- 局域网双人对战
-- 内置卡牌编辑器
-- `/agents` 协作日志页
+- a one-stage solo boss fight
+- a solo local test mode
+- LAN PvP multiplayer
+- a built-in card editor
+- a separate `/agents` collaboration log page
 
-项目目录：
+Project root:
 
 - `/Users/ruiliu/Documents/New project/clawteam-lan-hearthstone`
 
-## 当前特性
+## Current Features
 
-### 玩法模式
+### Game Modes
 
-- `单关 Boss 战`
-  在限定回合压力下击败预设 Boss。
-- `本地测试版`
-  一个人也能测试整套出牌、攻击、目标选择和回合流程。
-  对手每个敌方回合会：
-  - 获得 `5` 点护甲
-  - 召唤 `1` 个 `2/2` 随从
-- `局域网双人对战`
-  同一局域网内的电脑和手机可以直接访问同一个地址进行对战。
+- `Solo Boss Fight`
+  A single-stage pressure fight against a predefined boss.
 
-### 卡牌与机制
+- `Local Test Mode`
+  A one-player sandbox for testing turns, targeting, combat, and card effects.
+  The opponent does the following on each enemy turn:
+  - gains `5` armor
+  - summons one `2/2` minion
 
-当前已支持的基础效果：
+- `LAN PvP`
+  Computers and phones on the same local network can join the same match.
+
+### Card Effects and Mechanics
+
+Currently supported effect families:
 
 - `damage`
 - `heal`
@@ -38,49 +40,50 @@
 - `buff`
 - `conditional`
 
-当前已支持的关键词：
+Currently supported keywords:
 
-- `嘲讽`
-- `剧毒`
-- `复生`
-- `圣盾`
-- `吸血`
-- `风怒`
+- `Taunt`
+- `Poisonous`
+- `Reborn`
+- `Divine Shield`
+- `Lifesteal`
+- `Windfury`
 
-规则补充：
+Rule details:
 
-- `嘲讽` 会强制攻击者优先攻击带嘲讽的随从。
-- `复生` 触发后只会把生命变成 `1`，其余关键词效果和攻击力会保留，`复生` 本身只触发一次。
-- `由玩家决定` 的伤害/治疗目标可以是任意英雄或任意随从，包括友方。
+- `Taunt` forces attackers to target a taunt minion first.
+- `Reborn` revives a minion at `1` health while preserving its other keyword effects and original attack. `Reborn` itself only triggers once.
+- `Player choice` damage and healing effects can target any hero or any minion, including friendly targets.
 
-### 编辑器
+### Card Editor
 
-编辑器支持修改：
+The editor can currently modify:
 
-- 卡牌名称
-- 费用
-- 类型
-- 启用 / 禁用
-- 起始牌组数量
-- 随从攻击 / 生命
-- 随从关键词
-- 法术伤害值 / 目标
-- 治疗 / 护甲 / 抽牌数值
-- 召唤数量 / 名称 / 攻击 / 生命 / 关键词
-- 条件触发和条件奖励
-- 高级 `JSON` 效果
+- card name
+- mana cost
+- card type
+- enable / disable
+- starting deck count
+- minion attack / health
+- minion keywords
+- spell damage amount / spell target
+- heal / armor / draw values
+- summon count / name / attack / health / keywords
+- conditional trigger and conditional reward
+- advanced `JSON` effects
 
-### 进度恢复
+### Save and Resume
 
-- `单人 Boss 战` 和 `本地测试版`
-  会把当前局面保存在浏览器本地。
-  刷新页面、关闭浏览器再打开后，默认会尝试恢复。
-- `局域网双人对战`
-  浏览器会保留稳定本地身份。
-  同一设备刷新或重新打开页面时，会尝试回到原来的房间或进行中的对局。
-  服务端当前保留断线恢复窗口约 `5 分钟`。
+- `Solo Boss Fight` and `Local Test Mode`
+  The current board state is stored in browser `localStorage`.
+  Refreshing the page or reopening the browser will attempt to restore progress.
 
-## 运行方式
+- `LAN PvP`
+  The browser keeps a stable local identity.
+  Refreshing or reopening on the same device attempts to rejoin the room or active match.
+  The server currently keeps a reconnect window of about `5 minutes`.
+
+## Run
 
 ```bash
 cd "/Users/ruiliu/Documents/New project/clawteam-lan-hearthstone"
@@ -88,44 +91,46 @@ npm install
 npm start
 ```
 
-默认运行在 `3000` 端口。
+Default port:
 
-如果想用自定义端口：
+- `3000`
+
+Custom port example:
 
 ```bash
 PORT=3301 npm start
 ```
 
-服务器监听在 `0.0.0.0`，同一局域网里的其他设备也能访问。
+The server listens on `0.0.0.0`, so devices on the same LAN can connect directly.
 
-## 主要入口
+## Main Routes
 
 - `/`
-  主游戏页面
+  Main game page
 - `/editor`
-  卡牌编辑器
+  Card editor
 - `/agents`
-  manager / agents 工作记录页
+  Manager / agents work log page
 - `/api/meta`
-  当前局域网访问地址
+  LAN address metadata
 - `/api/healthz`
-  服务健康检查
+  Health check
 
-常见示例：
+Useful examples:
 
 - [http://127.0.0.1:3301/](http://127.0.0.1:3301/)
 - [http://127.0.0.1:3301/editor](http://127.0.0.1:3301/editor)
 - [http://127.0.0.1:3301/agents](http://127.0.0.1:3301/agents)
 
-## URL 约定
+## URL Conventions
 
-为了让恢复逻辑更稳定，页面会使用不同的模式 URL：
+To make resume behavior more stable, the app uses different URL query modes:
 
 - `/?mode=solo&scenario=boss`
 - `/?mode=solo&scenario=test`
 - `/?mode=pvp&room=ABCD`
 
-## 项目结构
+## Project Structure
 
 ```text
 clawteam-lan-hearthstone/
@@ -155,59 +160,63 @@ clawteam-lan-hearthstone/
 ├── AI_PROCESS.md
 ├── AI_CONCLUSION.md
 ├── AI_DEV_GUIDE.md
+├── GITHUB_PUBLISH.md
 ├── package.json
 └── package-lock.json
 ```
 
-## 核心文件说明
+## Core Files
 
 - [server.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server.mjs:1)
-  HTTP 服务、静态资源路由、WebSocket 连接、房间事件与断线恢复窗口。
+  HTTP server, static routing, WebSocket entrypoints, room events, and reconnect handling.
 
 - [server/game-engine.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/game-engine.mjs:1)
-  PvP 的服务端权威战斗逻辑。
+  Server-authoritative PvP combat logic.
 
 - [server/protocol.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/protocol.mjs:1)
-  房间消息和按玩家过滤后的对局状态。
+  Room messages and per-player filtered game state.
 
 - [public/app.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/app.js:1)
-  单人模式、测试模式、PvP 客户端渲染、交互、恢复逻辑。
+  Solo mode, test mode, PvP rendering, interactions, and restore logic.
 
 - [public/network.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/network.js:1)
-  WebSocket 客户端封装，包含稳定浏览器身份。
+  WebSocket client wrapper with stable browser identity.
 
 - [public/keywords.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/keywords.js:1)
-  关键词定义、排序和随从运行时状态辅助函数。
+  Shared keyword definitions, ordering, and minion runtime helpers.
 
 - [public/editor.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.js:1)
-  卡牌编辑器逻辑，`editorModel` 是结构化编辑的主状态。
+  Card editor logic. `editorModel` is the structured source of truth.
 
-## 验证建议
+## Suggested Validation
 
-如果要自己快速验一轮，推荐按这个顺序：
+For a quick sanity pass:
 
-1. 打开 `本地测试版`
-2. 出一张法术，确认目标高亮和目标选择正常
-3. 出一个带关键词的随从，测试攻击/复生/圣盾等交互
-4. 刷新页面，确认单人局面被恢复
-5. 再开一局双人房间，刷新其中一边，确认能回到原房间/原对局
+1. Open `Local Test Mode`
+2. Play a spell and confirm target highlighting / target selection works
+3. Play a keyword minion and verify combat, shield, reborn, and attack behavior
+4. Refresh the page and confirm solo progress is restored
+5. Start a LAN room, refresh one client, and confirm the room or match resumes
 
-## 已知边界
+## Known Limits
 
-- 编辑器对结构化效果支持很好，但极复杂的多层嵌套效果仍然更适合写在额外 `JSON` 里。
-- 双人恢复依赖：
-  - 同一台设备
-  - 同一个浏览器本地身份
-  - 服务端仍在运行
-- 当前没有观战系统，也没有聊天系统。
+- The editor is strong for structured effects, but deeply nested custom effect trees are still better expressed in extra `JSON`.
+- PvP resume depends on:
+  - the same device
+  - the same browser-local identity
+  - the server still running
+- There is no spectator system yet.
+- There is no chat system yet.
 
-## AI 文档
+## AI Documentation
 
 - [AI_HANDOFF.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_HANDOFF.md:1)
-  AI 交接入口索引
+  AI handoff index
 - [AI_CONCLUSION.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_CONCLUSION.md:1)
-  当前稳定结论
+  Current stable project state
 - [AI_PROCESS.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_PROCESS.md:1)
-  开发过程与排查记录
+  Process log and debugging history
 - [AI_DEV_GUIDE.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_DEV_GUIDE.md:1)
-  面向后续开发者 / AI 的维护说明
+  Maintenance guide for the next developer or AI
+- [GITHUB_PUBLISH.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/GITHUB_PUBLISH.md:1)
+  GitHub publication notes
