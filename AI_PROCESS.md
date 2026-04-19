@@ -194,6 +194,20 @@ This pass included:
 - adding [.gitignore](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/.gitignore:1)
 - initializing a standalone git repository inside the project folder to avoid depending on the outer mixed workspace
 
+### 12. Public GitHub Publication
+
+After the documentation pass, the project was published as a public English-language GitHub repository.
+
+Publication target:
+
+- [https://github.com/connect36/clawteam-lan-hearthstone](https://github.com/connect36/clawteam-lan-hearthstone)
+
+Publication details:
+
+- visibility: `public`
+- documentation language: `English`
+- local standalone git repository pushed to `main`
+
 ## Major Problems Fixed During Iteration
 
 ### Editor Issues

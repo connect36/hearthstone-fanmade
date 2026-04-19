@@ -4,6 +4,10 @@
 
 - `/Users/ruiliu/Documents/New project/clawteam-lan-hearthstone`
 
+## Public Repository
+
+- [https://github.com/connect36/clawteam-lan-hearthstone](https://github.com/connect36/clawteam-lan-hearthstone)
+
 ## What This Project Is
 
 This is a browser-based Hearthstone-style mini game that currently includes:

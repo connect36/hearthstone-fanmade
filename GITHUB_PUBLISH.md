@@ -4,7 +4,11 @@
 
 - `/Users/ruiliu/Documents/New project/clawteam-lan-hearthstone`
 
-## Current Packaging State
+## Current Publication State
+
+The project has been published successfully as a public GitHub repository:
+
+- [https://github.com/connect36/clawteam-lan-hearthstone](https://github.com/connect36/clawteam-lan-hearthstone)
 
 Before publication, the following documentation and repository cleanup work was completed:
 
@@ -21,13 +25,18 @@ That means:
 - AI handoff documents are clearly separated
 - the project can now be committed independently of the outer mixed workspace
 
-## Publication Goal
-
-Target repository settings for publication:
+## Final Repository Settings
 
 - repository name: `clawteam-lan-hearthstone`
+- owner: `connect36`
 - visibility: `public`
 - documentation language: `English`
+
+## Clone URL
+
+```bash
+git clone https://github.com/connect36/clawteam-lan-hearthstone.git
+```
 
 ## Recommended Publish Scope
 

@@ -12,6 +12,10 @@ Project root:
 
 - `/Users/ruiliu/Documents/New project/clawteam-lan-hearthstone`
 
+GitHub repository:
+
+- [https://github.com/connect36/clawteam-lan-hearthstone](https://github.com/connect36/clawteam-lan-hearthstone)
+
 ## Current Features
 
 ### Game Modes
