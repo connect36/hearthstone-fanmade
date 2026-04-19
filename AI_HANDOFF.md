@@ -2,16 +2,16 @@
 
 This project now keeps handoff content in several focused Markdown files:
 
-- [README.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/README.md:1)
+- [README.md](./README.md)
   Human-facing project overview, run instructions, routes, and feature summary.
 
-- [AI_PROCESS.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_PROCESS.md:1)
+- [AI_PROCESS.md](./AI_PROCESS.md)
   Development process, change history, debugging path, and validation notes.
-- [AI_CONCLUSION.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_CONCLUSION.md:1)
+- [AI_CONCLUSION.md](./AI_CONCLUSION.md)
   Current project state, architecture summary, routes, supported mechanics, and known limits.
-- [AI_DEV_GUIDE.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_DEV_GUIDE.md:1)
+- [AI_DEV_GUIDE.md](./AI_DEV_GUIDE.md)
   Practical maintenance guide for another developer or AI.
-- [GITHUB_PUBLISH.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/GITHUB_PUBLISH.md:1)
+- [GITHUB_PUBLISH.md](./GITHUB_PUBLISH.md)
   Packaging status, GitHub blocker, and the shortest publish path.
 
 Project root:

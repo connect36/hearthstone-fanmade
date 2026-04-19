@@ -15,11 +15,11 @@ This file only records:
 
 For the current stable state, see:
 
-- [AI_CONCLUSION.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_CONCLUSION.md:1)
+- [AI_CONCLUSION.md](./AI_CONCLUSION.md)
 
 For GitHub publication status, see:
 
-- [GITHUB_PUBLISH.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/GITHUB_PUBLISH.md:1)
+- [GITHUB_PUBLISH.md](./GITHUB_PUBLISH.md)
 
 ## Main Development Stages
 
@@ -188,10 +188,10 @@ Before publication, the project received a dedicated documentation pass.
 
 This pass included:
 
-- rewriting [README.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/README.md:1)
+- rewriting [README.md](./README.md)
 - keeping and updating `AI_PROCESS / AI_CONCLUSION / AI_DEV_GUIDE`
-- adding [GITHUB_PUBLISH.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/GITHUB_PUBLISH.md:1)
-- adding [.gitignore](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/.gitignore:1)
+- adding [GITHUB_PUBLISH.md](./GITHUB_PUBLISH.md)
+- adding [.gitignore](./.gitignore)
 - initializing a standalone git repository inside the project folder to avoid depending on the outer mixed workspace
 
 ### 12. Public GitHub Publication
@@ -289,5 +289,5 @@ Common test port:
 ## Ongoing Maintenance Rule
 
 - new implementation history, debugging notes, and failed attempts go here
-- the stable current state belongs in [AI_CONCLUSION.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_CONCLUSION.md:1)
-- GitHub publication status belongs in [GITHUB_PUBLISH.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/GITHUB_PUBLISH.md:1)
+- the stable current state belongs in [AI_CONCLUSION.md](./AI_CONCLUSION.md)
+- GitHub publication status belongs in [GITHUB_PUBLISH.md](./GITHUB_PUBLISH.md)

@@ -90,7 +90,7 @@ Characteristics:
 
 Base card data lives in:
 
-- [public/game-data.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/game-data.js:1)
+- [public/game-data.js](./public/game-data.js)
 
 The main card shape centers around:
 
@@ -122,7 +122,7 @@ The main card shape centers around:
 
 The shared keyword module lives in:
 
-- [public/keywords.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/keywords.js:1)
+- [public/keywords.js](./public/keywords.js)
 
 Currently supported:
 
@@ -169,10 +169,10 @@ At match start:
 
 Editor files:
 
-- [public/editor.html](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.html:1)
-- [public/editor.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.js:1)
-- [public/editor.css](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.css:1)
-- [public/card-overrides.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/card-overrides.js:1)
+- [public/editor.html](./public/editor.html)
+- [public/editor.js](./public/editor.js)
+- [public/editor.css](./public/editor.css)
+- [public/card-overrides.js](./public/card-overrides.js)
 
 The editor can currently change:
 
@@ -223,22 +223,22 @@ To make restore behavior more stable, the app uses mode-specific query parameter
 
 ## Main Runtime Files
 
-- [public/app.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/app.js:1)
+- [public/app.js](./public/app.js)
   Main client logic for solo, test mode, PvP UI, rendering, and interactions.
 
-- [public/network.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/network.js:1)
+- [public/network.js](./public/network.js)
   WebSocket client wrapper, stable browser identity, and PvP message flow.
 
-- [server/game-engine.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/game-engine.mjs:1)
+- [server/game-engine.mjs](./server/game-engine.mjs)
   Server-authoritative PvP rules and resolution.
 
-- [server/protocol.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/protocol.mjs:1)
+- [server/protocol.mjs](./server/protocol.mjs)
   Message protocol and per-player filtered state output.
 
-- [server/rooms.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/rooms.mjs:1)
+- [server/rooms.mjs](./server/rooms.mjs)
   Room lifecycle, room/player mapping, and reconnect cleanup.
 
-- [server.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server.mjs:1)
+- [server.mjs](./server.mjs)
   HTTP server, static routing, WebSocket integration, and API endpoints.
 
 ## Known Limits
@@ -254,7 +254,7 @@ To make restore behavior more stable, the app uses mode-specific query parameter
 
 ## Suggested Reading Order
 
-1. Start with [README.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/README.md:1)
+1. Start with [README.md](./README.md)
 2. Then read this file for the stable current state
-3. Then read [AI_DEV_GUIDE.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_DEV_GUIDE.md:1) before modifying code
-4. Use [AI_PROCESS.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_PROCESS.md:1) when historical debugging context matters
+3. Then read [AI_DEV_GUIDE.md](./AI_DEV_GUIDE.md) before modifying code
+4. Use [AI_PROCESS.md](./AI_PROCESS.md) when historical debugging context matters

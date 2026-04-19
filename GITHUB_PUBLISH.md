@@ -12,11 +12,11 @@ The project has been published successfully as a public GitHub repository:
 
 Before publication, the following documentation and repository cleanup work was completed:
 
-- [README.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/README.md:1) was rewritten
-- [AI_PROCESS.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_PROCESS.md:1) was updated
-- [AI_CONCLUSION.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_CONCLUSION.md:1) was updated
-- [AI_DEV_GUIDE.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_DEV_GUIDE.md:1) was updated
-- [.gitignore](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/.gitignore:1) was added
+- [README.md](./README.md) was rewritten
+- [AI_PROCESS.md](./AI_PROCESS.md) was updated
+- [AI_CONCLUSION.md](./AI_CONCLUSION.md) was updated
+- [AI_DEV_GUIDE.md](./AI_DEV_GUIDE.md) was updated
+- [.gitignore](./.gitignore) was added
 - a standalone local git repository was initialized inside the project folder
 
 That means:
@@ -72,7 +72,7 @@ After the repository is published, verify on GitHub that:
 
 If another developer or AI takes over after publication, read in this order:
 
-1. [README.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/README.md:1)
-2. [AI_CONCLUSION.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_CONCLUSION.md:1)
-3. [AI_DEV_GUIDE.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_DEV_GUIDE.md:1)
-4. [AI_PROCESS.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_PROCESS.md:1)
+1. [README.md](./README.md)
+2. [AI_CONCLUSION.md](./AI_CONCLUSION.md)
+3. [AI_DEV_GUIDE.md](./AI_DEV_GUIDE.md)
+4. [AI_PROCESS.md](./AI_PROCESS.md)

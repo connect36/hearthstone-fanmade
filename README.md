@@ -171,25 +171,25 @@ clawteam-lan-hearthstone/
 
 ## Core Files
 
-- [server.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server.mjs:1)
+- [server.mjs](./server.mjs)
   HTTP server, static routing, WebSocket entrypoints, room events, and reconnect handling.
 
-- [server/game-engine.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/game-engine.mjs:1)
+- [server/game-engine.mjs](./server/game-engine.mjs)
   Server-authoritative PvP combat logic.
 
-- [server/protocol.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/protocol.mjs:1)
+- [server/protocol.mjs](./server/protocol.mjs)
   Room messages and per-player filtered game state.
 
-- [public/app.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/app.js:1)
+- [public/app.js](./public/app.js)
   Solo mode, test mode, PvP rendering, interactions, and restore logic.
 
-- [public/network.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/network.js:1)
+- [public/network.js](./public/network.js)
   WebSocket client wrapper with stable browser identity.
 
-- [public/keywords.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/keywords.js:1)
+- [public/keywords.js](./public/keywords.js)
   Shared keyword definitions, ordering, and minion runtime helpers.
 
-- [public/editor.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.js:1)
+- [public/editor.js](./public/editor.js)
   Card editor logic. `editorModel` is the structured source of truth.
 
 ## Suggested Validation
@@ -214,13 +214,13 @@ For a quick sanity pass:
 
 ## AI Documentation
 
-- [AI_HANDOFF.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_HANDOFF.md:1)
+- [AI_HANDOFF.md](./AI_HANDOFF.md)
   AI handoff index
-- [AI_CONCLUSION.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_CONCLUSION.md:1)
+- [AI_CONCLUSION.md](./AI_CONCLUSION.md)
   Current stable project state
-- [AI_PROCESS.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_PROCESS.md:1)
+- [AI_PROCESS.md](./AI_PROCESS.md)
   Process log and debugging history
-- [AI_DEV_GUIDE.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_DEV_GUIDE.md:1)
+- [AI_DEV_GUIDE.md](./AI_DEV_GUIDE.md)
   Maintenance guide for the next developer or AI
-- [GITHUB_PUBLISH.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/GITHUB_PUBLISH.md:1)
+- [GITHUB_PUBLISH.md](./GITHUB_PUBLISH.md)
   GitHub publication notes

@@ -72,7 +72,7 @@ clawteam-lan-hearthstone/
 
 ## Core Module Responsibilities
 
-### [public/game-data.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/game-data.js:1)
+### [public/game-data.js](./public/game-data.js)
 
 Responsible for:
 
@@ -86,7 +86,7 @@ Good place to change:
 - default deck counts
 - base boss encounter setup
 
-### [public/card-overrides.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/card-overrides.js:1)
+### [public/card-overrides.js](./public/card-overrides.js)
 
 Responsible for:
 
@@ -94,7 +94,7 @@ Responsible for:
 - editor persistence
 - overlaying custom cards on top of default data
 
-### [public/editor.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.js:1)
+### [public/editor.js](./public/editor.js)
 
 Responsible for:
 
@@ -108,7 +108,7 @@ Key rule:
 - structured fields are the first source of truth
 - card text should be generated from structure, not used to drive structure backwards
 
-### [public/keywords.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/keywords.js:1)
+### [public/keywords.js](./public/keywords.js)
 
 Responsible for:
 
@@ -118,7 +118,7 @@ Responsible for:
 
 If a new keyword is needed, start here.
 
-### [public/app.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/app.js:1)
+### [public/app.js](./public/app.js)
 
 Responsible for:
 
@@ -131,7 +131,7 @@ Responsible for:
 
 This is currently the highest-churn file in the project.
 
-### [public/network.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/network.js:1)
+### [public/network.js](./public/network.js)
 
 Responsible for:
 
@@ -140,7 +140,7 @@ Responsible for:
 - PvP message dispatch
 - reconnect identity preservation
 
-### [server/game-engine.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/game-engine.mjs:1)
+### [server/game-engine.mjs](./server/game-engine.mjs)
 
 Responsible for:
 
@@ -152,7 +152,7 @@ Responsible for:
 
 If a rule must truly count in multiplayer, it ultimately needs to be correct here.
 
-### [server/protocol.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/protocol.mjs:1)
+### [server/protocol.mjs](./server/protocol.mjs)
 
 Responsible for:
 
@@ -160,7 +160,7 @@ Responsible for:
 - per-player filtered state
 - preventing hidden hand/deck information from leaking to the opponent
 
-### [server/rooms.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/rooms.mjs:1)
+### [server/rooms.mjs](./server/rooms.mjs)
 
 Responsible for:
 
@@ -168,7 +168,7 @@ Responsible for:
 - room and player mapping
 - reconnect cleanup and grace-window handling
 
-### [server.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server.mjs:1)
+### [server.mjs](./server.mjs)
 
 Responsible for:
 
@@ -183,7 +183,7 @@ Responsible for:
 
 Preferred path:
 
-1. add the default card in [public/game-data.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/game-data.js:1)
+1. add the default card in [public/game-data.js](./public/game-data.js)
 2. if the change should stay local instead of modifying defaults, use `/editor`
 
 ### Add a New Effect Type
@@ -196,15 +196,15 @@ At minimum, check these three layers:
 
 This usually touches:
 
-- [public/editor.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.js:1)
-- [public/app.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/app.js:1)
-- [server/game-engine.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/game-engine.mjs:1)
+- [public/editor.js](./public/editor.js)
+- [public/app.js](./public/app.js)
+- [server/game-engine.mjs](./server/game-engine.mjs)
 
 ### Add a New Keyword
 
 Recommended order:
 
-1. define it in [public/keywords.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/keywords.js:1)
+1. define it in [public/keywords.js](./public/keywords.js)
 2. wire it into solo runtime
 3. wire it into the PvP server
 4. add editor UI support
@@ -215,9 +215,9 @@ Targeting is the easiest area to desynchronize between editor and runtime.
 
 Always review all of:
 
-- [public/editor.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.js:1)
-- [public/app.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/app.js:1)
-- [server/game-engine.mjs](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/server/game-engine.mjs:1)
+- [public/editor.js](./public/editor.js)
+- [public/app.js](./public/app.js)
+- [server/game-engine.mjs](./server/game-engine.mjs)
 
 Pay extra attention to:
 
@@ -260,26 +260,26 @@ If you change any of this, re-test:
 
 For main page UI changes, check all three:
 
-- [public/index.html](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/index.html:1)
-- [public/styles.css](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/styles.css:1)
-- [public/app.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/app.js:1)
+- [public/index.html](./public/index.html)
+- [public/styles.css](./public/styles.css)
+- [public/app.js](./public/app.js)
 
 ### Editor Page
 
 For editor changes, check all three:
 
-- [public/editor.html](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.html:1)
-- [public/editor.css](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.css:1)
-- [public/editor.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/editor.js:1)
+- [public/editor.html](./public/editor.html)
+- [public/editor.css](./public/editor.css)
+- [public/editor.js](./public/editor.js)
 
 ### `/agents` Page
 
 For log-page display changes, check:
 
-- [public/agents.html](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/agents.html:1)
-- [public/agents.css](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/agents.css:1)
-- [public/agents-app.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/agents-app.js:1)
-- [public/agent-worklog.js](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/public/agent-worklog.js:1)
+- [public/agents.html](./public/agents.html)
+- [public/agents.css](./public/agents.css)
+- [public/agents-app.js](./public/agents-app.js)
+- [public/agent-worklog.js](./public/agent-worklog.js)
 
 ## Recommended Regression Checklist
 
@@ -329,11 +329,11 @@ curl http://127.0.0.1:3301/api/healthz
 
 When features change, update these together when appropriate:
 
-- [README.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/README.md:1)
+- [README.md](./README.md)
   Human-facing overview
-- [AI_CONCLUSION.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_CONCLUSION.md:1)
+- [AI_CONCLUSION.md](./AI_CONCLUSION.md)
   Stable current state
-- [AI_PROCESS.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/AI_PROCESS.md:1)
+- [AI_PROCESS.md](./AI_PROCESS.md)
   Process and debugging history
-- [GITHUB_PUBLISH.md](/Users/ruiliu/Documents/New%20project/clawteam-lan-hearthstone/GITHUB_PUBLISH.md:1)
+- [GITHUB_PUBLISH.md](./GITHUB_PUBLISH.md)
   Publication status and GitHub notes
