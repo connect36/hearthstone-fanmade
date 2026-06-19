@@ -1033,10 +1033,18 @@ export class GameEngine {
         const board = state[normalizedTarget.side].board;
         const startIndex = board.findIndex((minion) => minion.instanceId === normalizedTarget.minionId);
         if (startIndex < 0) continue;
+        const direction = effect.direction || 'right';
         let amount = Math.max(1, Number(effect.amount) || 1);
-        for (let index = startIndex; index < board.length; index += 1) {
-          this.dealDamageToMinion(state, board[index], amount);
-          amount += Number(effect.step) || 1;
+        if (direction === 'left') {
+          for (let index = startIndex; index >= 0; index -= 1) {
+            this.dealDamageToMinion(state, board[index], amount);
+            amount += Number(effect.step) || 1;
+          }
+        } else {
+          for (let index = startIndex; index < board.length; index += 1) {
+            this.dealDamageToMinion(state, board[index], amount);
+            amount += Number(effect.step) || 1;
+          }
         }
         this.processAllDeaths(state);
         this.log(state, `${actorPlayer.heroName} 触发了多米诺效应`);

@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="/battlegrounds.css" />
   </head>
   <body class="lobby-page">
+    <div id="combat-text-layer" class="combat-text-layer" aria-hidden="true"></div>
     <div class="app-shell">
 
       <!-- 大厅覆盖层 -->
@@ -168,9 +169,7 @@
                 <span class="resource-pill resource-pill--armor" id="enemy-armor">
                   0
                 </span>
-                <span class="resource-pill resource-pill--mana" id="enemy-mana">
-                  0 / 0
-                </span>
+                <div class="mana-crystals" id="enemy-mana-crystals" aria-label="敌方法力水晶"></div>
               </div>
             </div>
           </article>
@@ -225,9 +224,7 @@
                 <span class="resource-pill resource-pill--armor" id="player-armor">
                   0
                 </span>
-                <span class="resource-pill resource-pill--mana" id="player-mana">
-                  0 / 0
-                </span>
+                <div class="mana-crystals" id="player-mana-crystals" aria-label="法力水晶"></div>
               </div>
             </div>
           </article>
@@ -242,6 +239,9 @@
             </div>
 
             <div class="hand-track" id="hand-cards" aria-live="polite"></div>
+            <div class="deck-stack" id="deck-stack" aria-label="牌库">
+              <span class="deck-stack__count" id="deck-count">0</span>
+            </div>
           </section>
 
           <section class="button-zone panel" id="button-zone" data-zone="actions">

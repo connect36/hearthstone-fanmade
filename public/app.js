@@ -510,6 +510,7 @@ const elements = {
   enemyHeroNote: document.getElementById('enemy-hero-note'),
   enemyHealth: document.getElementById('enemy-health'),
   enemyArmor: document.getElementById('enemy-armor'),
+  enemyManaCrystals: document.getElementById('enemy-mana-crystals'),
   enemyMana: document.getElementById('enemy-mana'),
   battlefieldZone: document.getElementById('battlefield-zone'),
   enemyBoardLane: document.getElementById('enemy-board-lane'),
@@ -518,9 +519,13 @@ const elements = {
   playerHeroNote: document.getElementById('player-hero-note'),
   playerHealth: document.getElementById('player-health'),
   playerArmor: document.getElementById('player-armor'),
+  playerManaCrystals: document.getElementById('player-mana-crystals'),
   playerMana: document.getElementById('player-mana'),
   playerBoardLane: document.getElementById('player-board-lane'),
   handCards: document.getElementById('hand-cards'),
+  deckStack: document.getElementById('deck-stack'),
+  deckCount: document.getElementById('deck-count'),
+  combatTextLayer: document.getElementById('combat-text-layer'),
   combatLog: document.getElementById('combat-log'),
   restartButton: document.getElementById('restart-button'),
   endTurnButton: document.getElementById('end-turn-button'),
@@ -2249,14 +2254,44 @@ function wakeBoard(side) {
   }
 }
 
+const newlyDrawnCardIds = new Set();
+
 function drawCards(amount) {
   let drawn = 0;
+  newlyDrawnCardIds.clear();
   while (drawn < amount && state.solo.player.deck.length && state.solo.player.hand.length < 10) {
     const nextCard = state.solo.player.deck.shift();
     state.solo.player.hand.push(nextCard);
+    newlyDrawnCardIds.add(nextCard.instanceId);
     drawn += 1;
   }
   return drawn;
+}
+
+function animateCardDraws() {
+  if (newlyDrawnCardIds.size === 0) return;
+  const deckRect = elements.deckStack?.getBoundingClientRect();
+  let stagger = 0;
+  for (const cardId of newlyDrawnCardIds) {
+    const cardEl = document.querySelector(`[data-card-id="${cardId}"]`);
+    if (cardEl && deckRect) {
+      const cardRect = cardEl.getBoundingClientRect();
+      const dx = deckRect.left - cardRect.left;
+      const dy = deckRect.top - cardRect.top;
+      cardEl.style.setProperty('--flip-from-x', `${dx}px`);
+      cardEl.style.setProperty('--flip-from-y', `${dy}px`);
+      cardEl.style.animationDelay = `${stagger}ms`;
+      cardEl.classList.add('anim-card-flip-in');
+      cardEl.addEventListener('animationend', () => {
+        cardEl.classList.remove('anim-card-flip-in');
+        cardEl.style.removeProperty('--flip-from-x');
+        cardEl.style.removeProperty('--flip-from-y');
+        cardEl.style.animationDelay = '';
+      }, { once: true });
+      stagger += 60;
+    }
+  }
+  newlyDrawnCardIds.clear();
 }
 
 function enemyPassiveBonus() {
@@ -2677,13 +2712,22 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       const board = state.solo[targetRef.side].board;
       const startIndex = board.findIndex((minion) => minion.instanceId === targetRef.id);
       if (startIndex < 0) continue;
+      const direction = effect.direction || 'right';
       let amount = Math.max(1, Number(effect.amount) || 1);
-      for (let index = startIndex; index < board.length; index += 1) {
-        dealMinionDamageSolo(null, actorSide, board[index], amount);
-        amount += Number(effect.step) || 1;
+      if (direction === 'left') {
+        for (let index = startIndex; index >= 0; index -= 1) {
+          dealMinionDamageSolo(null, actorSide, board[index], amount);
+          amount += Number(effect.step) || 1;
+        }
+        pushSoloLog('多米诺效应向目标左侧完成了递增伤害结算。');
+      } else {
+        for (let index = startIndex; index < board.length; index += 1) {
+          dealMinionDamageSolo(null, actorSide, board[index], amount);
+          amount += Number(effect.step) || 1;
+        }
+        pushSoloLog('多米诺效应向目标右侧完成了递增伤害结算。');
       }
       processSoloDeaths(targetRef.side);
-      pushSoloLog('多米诺效应向目标右侧完成了递增伤害结算。');
       continue;
     }
 
@@ -2730,10 +2774,12 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
         );
         animator?.hit?.(targetHeroAreaSolo(targetRef.side));
         animator?.pulseStat?.(targetHealthPillSolo(targetRef.side));
+        floatCombatTextOnTarget(targetHeroAreaSolo(targetRef.side), amount, 'damage');
       } else {
         dealMinionDamageSolo(null, actorSide, targetEntity, amount);
         pushSoloLog(`${describeTargetRefSolo(targetRef)} 受到了 ${amount} 点伤害。`);
         animator?.hit?.(getTargetAreaSolo(targetRef));
+        floatCombatTextOnTarget(getTargetAreaSolo(targetRef), amount, 'damage');
         processSoloDeaths(targetRef.side);
       }
       continue;
@@ -2751,6 +2797,7 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       }
       pushSoloLog(`${describeTargetRefSolo(targetRef)} 恢复了 ${healed} 点生命值。`);
       animator?.heal?.(getTargetAreaSolo(targetRef));
+      floatCombatTextOnTarget(getTargetAreaSolo(targetRef), healed, 'heal');
       if (targetRef.kind === 'hero') {
         animator?.pulseStat?.(targetHealthPillSolo(targetRef.side));
       }
@@ -2765,6 +2812,7 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       const amount = Number(effect.amount) || 0;
       addArmor(state.solo[targetRef.side], amount);
       pushSoloLog(`${state.solo[targetRef.side].heroName} 获得 ${amount} 点护甲。`);
+      floatCombatTextOnTarget(targetArmorPillSolo(targetRef.side), amount, 'armor');
       animator?.pulseStat?.(targetArmorPillSolo(targetRef.side));
       continue;
     }
@@ -2833,6 +2881,7 @@ function drawCardsSolo(amount) {
   while (drawn < amount && state.solo.player.deck.length && state.solo.player.hand.length < 10) {
     const nextCard = state.solo.player.deck.shift();
     state.solo.player.hand.push(nextCard);
+    newlyDrawnCardIds.add(nextCard.instanceId);
     drawn += 1;
   }
   return drawn;
@@ -2884,6 +2933,62 @@ function resolveCardSolo(cardInstance, chosenDamageTarget = null) {
     renderSolo();
   }
 }
+
+// ── 可交易 ──────────────────────────────────────────────────
+
+function tradeCardSolo(cardId) {
+  if (state.solo.phase !== 'player' || state.solo.busy) return;
+  if (state.solo.player.mana < 1) {
+    pushSoloLog('法力值不足，无法交易。');
+    renderSolo();
+    return;
+  }
+  const index = state.solo.player.hand.findIndex(c => c.instanceId === cardId);
+  if (index < 0) return;
+
+  const card = state.solo.player.hand[index];
+
+  // 播放交换动画
+  const cardEl = document.querySelector(`[data-card-id="${cardId}"]`);
+  if (cardEl) {
+    cardEl.classList.add('anim-trade-out');
+  }
+
+  // 消耗 1 法力
+  state.solo.player.mana -= 1;
+
+  // 洗回牌库并抽一张
+  state.solo.player.hand.splice(index, 1);
+  state.solo.player.deck.push({ ...card, instanceId: card.instanceId, temporary: false });
+  state.solo.player.deck = shuffle(state.solo.player.deck);
+  drawCardsSolo(1);
+
+  pushSoloLog(`你将 ${card.name} 洗回牌库并抽了一张牌。`);
+  renderSolo();
+}
+
+function tradeCardPvp(cardId) {
+  if (!state.pvp?.player) return;
+  const player = state.pvp.player;
+  if (player.mana < 1) return;
+  const index = player.hand.findIndex(c => c.instanceId === cardId);
+  if (index < 0) return;
+
+  const card = player.hand[index];
+  const cardEl = document.querySelector(`[data-card-id="${cardId}"]`);
+  if (cardEl) cardEl.classList.add('anim-trade-out');
+
+  player.mana -= 1;
+  player.hand.splice(index, 1);
+  player.deck.push({ ...card, instanceId: card.instanceId, temporary: false });
+  // PvP 洗牌由服务端处理，这里先本地操作
+  if (typeof network !== 'undefined' && network.sendAction) {
+    network.sendAction({ type: 'trade_card', cardInstanceId: cardId });
+  }
+  renderPvp();
+}
+
+// ── 出牌 ──────────────────────────────────────────────────
 
 function playCardSolo(cardInstance) {
   if (state.solo.phase !== 'player' || state.solo.busy) return;
@@ -3003,15 +3108,24 @@ function resolveMinionCombatSolo(attacker, defenderSide, defenderType, defenderI
 
   if (defenderType === 'hero') {
     const defender = state.solo[defenderSide];
+    // 攻击前冲动画
+    const attackerEl = document.querySelector(`[data-minion-id="${attacker.instanceId}"]`);
+    const defenderEl = targetHeroAreaSolo(defenderSide);
+    if (attackerEl) attackerEl.classList.add('anim-attack-lunge');
+    if (defenderEl) defenderEl.classList.add('anim-attack-shake');
     dealHeroDamageSolo(attacker, attacker.side, defender, attacker.attack);
     consumeMinionAttack(attacker);
     pushSoloLog(`${attacker.name} 攻击了 ${defender.heroName}，造成 ${attacker.attack} 点伤害。`);
     animator?.hit?.(targetHeroAreaSolo(defenderSide));
     animator?.pulseStat?.(targetHealthPillSolo(defenderSide));
+    floatCombatTextOnTarget(targetHeroAreaSolo(defenderSide), attacker.attack, 'damage');
     if (hasKeyword(attacker, 'lifesteal')) {
       animator?.heal?.(targetHeroAreaSolo(attacker.side));
       animator?.pulseStat?.(targetHealthPillSolo(attacker.side));
+      floatCombatTextOnTarget(targetHeroAreaSolo(attacker.side), attacker.attack, 'heal');
     }
+    if (attackerEl) setTimeout(() => attackerEl.classList.remove('anim-attack-lunge'), 360);
+    if (defenderEl) setTimeout(() => defenderEl.classList.remove('anim-attack-shake'), 310);
     checkSoloOutcome();
     return;
   }
@@ -3023,17 +3137,29 @@ function resolveMinionCombatSolo(attacker, defenderSide, defenderType, defenderI
   dealMinionDamageSolo(defender, defenderSide, attacker, defender.attack);
   consumeMinionAttack(attacker);
 
+  // 攻击前冲 + 震动
+  const atkEl = document.querySelector(`[data-minion-id="${attacker.instanceId}"]`);
+  const defEl = document.querySelector(`[data-minion-id="${defender.instanceId}"]`);
+  if (atkEl) atkEl.classList.add('anim-attack-lunge');
+  if (defEl) defEl.classList.add('anim-attack-shake');
+
   pushSoloLog(`${attacker.name} 与 ${defender.name} 交战。`);
   animator?.hit?.(`[data-minion-id="${attacker.instanceId}"]`);
   animator?.hit?.(`[data-minion-id="${defender.instanceId}"]`);
+  floatCombatTextOnTarget(`[data-minion-id="${attacker.instanceId}"]`, defender.attack, 'damage');
+  floatCombatTextOnTarget(`[data-minion-id="${defender.instanceId}"]`, attacker.attack, 'damage');
   if (hasKeyword(attacker, 'lifesteal')) {
     animator?.heal?.(targetHeroAreaSolo(attacker.side));
     animator?.pulseStat?.(targetHealthPillSolo(attacker.side));
+    floatCombatTextOnTarget(targetHeroAreaSolo(attacker.side), attacker.attack, 'heal');
   }
   if (hasKeyword(defender, 'lifesteal')) {
     animator?.heal?.(targetHeroAreaSolo(defenderSide));
     animator?.pulseStat?.(targetHealthPillSolo(defenderSide));
+    floatCombatTextOnTarget(targetHeroAreaSolo(defenderSide), defender.attack, 'heal');
   }
+  if (atkEl) setTimeout(() => atkEl.classList.remove('anim-attack-lunge'), 360);
+  if (defEl) setTimeout(() => defEl.classList.remove('anim-attack-shake'), 310);
 
   processSoloDeaths(attacker.side, defenderSide);
   checkSoloOutcome();
@@ -3287,6 +3413,52 @@ function createMinionTargetRefPvP(side, id) {
 }
 
 // ============================================
+// 法力水晶 & 浮动数字渲染
+// ============================================
+
+function renderManaCrystals(container, current, max, tempCount = 0) {
+  if (!container) return;
+  let html = '';
+  for (let i = 0; i < max; i++) {
+    let cls = 'mana-crystal';
+    if (i < current) cls += ' is-filled';
+    else if (i < current + tempCount) cls += ' is-temp';
+    else if (i >= max - (max - current - tempCount)) cls += ' is-spent';
+    html += `<span class="${cls}"></span>`;
+  }
+  container.innerHTML = html;
+}
+
+function floatCombatText(x, y, value, type = 'damage') {
+  const layer = elements.combatTextLayer;
+  if (!layer) return;
+  const el = document.createElement('span');
+  el.className = `combat-text combat-text--${type}`;
+  el.textContent = type === 'heal' ? `+${value}` : type === 'armor' ? `+${value}` : `-${value}`;
+  el.style.left = `${x}px`;
+  el.style.top = `${y}px`;
+  layer.appendChild(el);
+  el.addEventListener('animationend', () => el.remove());
+}
+
+function floatCombatTextOnTarget(targetEl, value, type = 'damage') {
+  if (!targetEl) return;
+  const rect = targetEl.getBoundingClientRect();
+  const x = rect.left + rect.width / 2 - 18 + (Math.random() - 0.5) * 20;
+  const y = rect.top - 4;
+  floatCombatText(x, y, value, type);
+}
+
+function updateDeckDisplay(count) {
+  if (elements.deckStack) {
+    elements.deckStack.classList.toggle('is-empty', count <= 0);
+  }
+  if (elements.deckCount) {
+    elements.deckCount.textContent = count > 0 ? count : '疲劳';
+  }
+}
+
+// ============================================
 // 渲染函数
 // ============================================
 
@@ -3302,6 +3474,7 @@ function renderSolo() {
   renderHeroPanelsSolo();
   renderBoardSolo();
   renderHandSolo();
+  animateCardDraws();
   renderLogSolo();
   renderButtonsSolo();
   renderTipsSolo();
@@ -3354,7 +3527,7 @@ function renderHeroPanelsSolo() {
       : `下一手：${nextMove}`;
   elements.enemyHealth.textContent = Math.max(0, state.solo.boss.health);
   elements.enemyArmor.textContent = Math.max(0, state.solo.boss.armor);
-  elements.enemyMana.textContent = `${state.solo.boss.mana} / ${state.solo.boss.maxMana}`;
+  renderManaCrystals(elements.enemyManaCrystals, state.solo.boss.mana, state.solo.boss.maxMana);
 
   elements.playerHeroName.textContent = state.solo.player.heroName;
   const runtime = ensureSoloRuntime('player');
@@ -3367,7 +3540,8 @@ function renderHeroPanelsSolo() {
   elements.playerHeroNote.textContent = `牌库 ${state.solo.player.deck.length} 张 · 手牌 ${state.solo.player.hand.length} 张 · 本局自伤 ${runtime.selfDamageThisGame}${questLabel}`;
   elements.playerHealth.textContent = Math.max(0, state.solo.player.health);
   elements.playerArmor.textContent = Math.max(0, state.solo.player.armor);
-  elements.playerMana.textContent = `${state.solo.player.mana} / ${state.solo.player.maxMana}`;
+  renderManaCrystals(elements.playerManaCrystals, state.solo.player.mana, state.solo.player.maxMana);
+  updateDeckDisplay(state.solo.player.deck.length);
 
   elements.enemyHeroArea.classList.toggle('is-targetable', enemyHeroCanBeAttacked);
   elements.enemyHeroArea.classList.toggle('is-spell-targetable', pendingSpell && canCardTargetSolo(pendingSpell, 'player', createHeroTargetRef('boss')));
@@ -3427,40 +3601,56 @@ function createMinionMarkupSolo(minion, ownerSide, canAttack, selected, spellTar
   `;
 }
 
-function renderHandSolo() {
-  elements.handCards.innerHTML = state.solo.player.hand.map((card) => {
-    const playable = playerCanPlaySolo(card);
-    const effectiveCost = getEffectiveCardCostSolo(card);
-    const pending = state.solo.pendingSpellId === card.instanceId;
-    const textValue = resolveCardText(card);
-    const effectText = textValue ? `<span class="game-card__text">${textValue}</span>` : '';
-    const details = card.type === 'minion'
-      ? `${card.attack}/${card.health} 随从${summarizeKeywords(card.keywords) ? ` · ${summarizeKeywords(card.keywords)}` : ''}`
-      : card.effects.map((effect) => {
-          if (effect.type === 'damage') return `伤害 ${effect.amount}`;
-          if (effect.type === 'heal') return `治疗 ${effect.amount}`;
-          if (effect.type === 'armor') return `护甲 ${effect.amount}`;
-          if (effect.type === 'draw') return `抽牌 ${effect.amount}`;
-          if (effect.type === 'buff') return `增益 +${effect.attack}/+${effect.health}`;
-          if (effect.type === 'summon') return `召唤 x${effect.amount}`;
-          return effect.type;
-        }).join(' · ');
+function isCardTradeable(card) {
+  return (card.mechanics || []).includes('tradeable');
+}
 
-    return `
-      <button
-        type="button"
-        class="game-card ${playable ? 'is-playable' : 'is-locked'} ${pending ? 'is-selected' : ''}"
-        data-card-id="${card.instanceId}"
-        ${playable ? '' : 'disabled'}
-      >
-        <span class="game-card__cost">${effectiveCost}</span>
-        <span class="game-card__name">${card.name}</span>
-        <span class="game-card__type">${card.type === 'minion' ? '随从' : '法术'}</span>
-        ${effectText}
-        <span class="game-card__details">${details}</span>
-      </button>
-    `;
-  }).join('');
+function buildHandCardHTML(card) {
+  const playable = playerCanPlaySolo(card);
+  const effectiveCost = getEffectiveCardCostSolo(card);
+  const pending = state.solo.pendingSpellId === card.instanceId;
+  const textValue = resolveCardText(card);
+  const effectText = textValue ? `<span class="game-card__text">${textValue}</span>` : '';
+  const details = card.type === 'minion'
+    ? `${card.attack}/${card.health} 随从${summarizeKeywords(card.keywords) ? ` · ${summarizeKeywords(card.keywords)}` : ''}`
+    : card.effects.map((effect) => {
+        if (effect.type === 'damage') return `伤害 ${effect.amount}`;
+        if (effect.type === 'heal') return `治疗 ${effect.amount}`;
+        if (effect.type === 'armor') return `护甲 ${effect.amount}`;
+        if (effect.type === 'draw') return `抽牌 ${effect.amount}`;
+        if (effect.type === 'buff') return `增益 +${effect.attack}/+${effect.health}`;
+        if (effect.type === 'summon') return `召唤 x${effect.amount}`;
+        return effect.type;
+      }).join(' · ');
+
+  const tradeableBtn = isCardTradeable(card)
+    ? `<button type="button" class="game-card__trade" data-trade-id="${card.instanceId}" title="可交易 — 消耗1点法力值，洗回牌库并抽一张牌">↻</button>`
+    : '';
+
+  return `
+    <button
+      type="button"
+      class="game-card ${playable ? 'is-playable' : 'is-locked'} ${pending ? 'is-selected' : ''}"
+      data-card-id="${card.instanceId}"
+      ${playable ? '' : 'disabled'}
+    >
+      ${tradeableBtn}
+      <span class="game-card__cost">${effectiveCost}</span>
+      <span class="game-card__name">${card.name}</span>
+      <span class="game-card__type">${card.type === 'minion' ? '随从' : '法术'}</span>
+      ${effectText}
+      <span class="game-card__details">${details}</span>
+    </button>
+  `;
+}
+
+function renderHandSolo() {
+  // 短暂隐藏避免 innerHTML 重建时闪烁
+  elements.handCards.style.visibility = 'hidden';
+  elements.handCards.innerHTML = state.solo.player.hand.map(buildHandCardHTML).join('');
+  requestAnimationFrame(() => {
+    elements.handCards.style.visibility = '';
+  });
 }
 
 function renderLogSolo() {
@@ -3525,14 +3715,15 @@ function renderHeroPanelsPvP() {
   elements.enemyHeroNote.textContent = isMyTurn ? '你的回合，轮到你行动。' : '等待对手行动...';
   elements.enemyHealth.textContent = Math.max(0, state.pvp.opponent.health);
   elements.enemyArmor.textContent = Math.max(0, state.pvp.opponent.armor);
-  elements.enemyMana.textContent = `${state.pvp.opponent.mana} / ${state.pvp.opponent.maxMana}`;
+  renderManaCrystals(elements.enemyManaCrystals, state.pvp.opponent.mana, state.pvp.opponent.maxMana);
 
   // 我的信息 (player)
   elements.playerHeroName.textContent = state.pvp.player.heroName;
   elements.playerHeroNote.textContent = `牌库 ${getVisibleDeckCount(state.pvp.player)} 张 · 手牌 ${state.pvp.player.hand.length} 张`;
   elements.playerHealth.textContent = Math.max(0, state.pvp.player.health);
   elements.playerArmor.textContent = Math.max(0, state.pvp.player.armor);
-  elements.playerMana.textContent = `${state.pvp.player.mana} / ${state.pvp.player.maxMana}`;
+  renderManaCrystals(elements.playerManaCrystals, state.pvp.player.mana, state.pvp.player.maxMana);
+  updateDeckDisplay(state.pvp.player.deck?.length || 0);
 
   // 目标高亮
   const canTargetEnemyHeroWithSpell = Boolean(pendingSpell && canCardTarget(pendingSpell, state.pvp.mySlot, enemyHeroTarget));
@@ -3683,6 +3874,19 @@ function renderButtonsPvP() {
 function setupEventHandlers() {
   // 手牌点击
   elements.handCards.addEventListener('click', (event) => {
+    // 可交易按钮 — 洗回牌库换一张
+    const tradeBtn = event.target.closest('.game-card__trade');
+    if (tradeBtn) {
+      event.stopPropagation();
+      const cardId = tradeBtn.dataset.tradeId;
+      if (state.mode === 'solo') {
+        tradeCardSolo(cardId);
+      } else if (state.mode === 'pvp') {
+        tradeCardPvp(cardId);
+      }
+      return;
+    }
+
     const button = event.target.closest('[data-card-id]');
     if (!button) return;
 

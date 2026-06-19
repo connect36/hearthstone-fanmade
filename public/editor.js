@@ -155,6 +155,8 @@ function createEmptyEffectGroup(trigger = 'onPlay') {
     buffAttack: 0, buffHealth: 0,
     delayedSelfDamage: 0, delayedTurns: 0,
     shuffleCopies: 0,
+    // 多米诺效应 — 连锁伤害
+    chainDamage: 0, chainDamageStep: 1, chainDirection: 'right',
     condition: '', conditionType: '', conditionTarget: 'enemyHero', conditionAmount: 0,
   };
 }
@@ -308,9 +310,17 @@ function extractStructuredEffects(card) {
     if (effect.type === 'redirectSelfDamage' || effect.type === 'restoreDamageThisTurn' ||
         effect.type === 'returnDeadFriendlyMinions' || effect.type === 'destroyFriendlyAndRandomEnemies' ||
         effect.type === 'grantKeyword' || effect.type === 'repeatAoeWhileMinionDies' ||
-        effect.type === 'swapHandWithDeckBottom' || effect.type === 'opponentSpellTax' ||
-        effect.type === 'adjacentChainDamage') {
+        effect.type === 'swapHandWithDeckBottom' || effect.type === 'opponentSpellTax') {
       unhandled.push(clone(effect));
+      handled = true;
+    }
+
+    // 多米诺效应 — 连锁伤害（结构化字段）
+    if (effect.type === 'adjacentChainDamage') {
+      const group = ensureGroup(trigger);
+      setIfFirst(group, 'chainDamage', Number(effect.amount) || 0);
+      setIfFirst(group, 'chainDamageStep', Number(effect.step) || 1);
+      setIfFirst(group, 'chainDirection', effect.direction || 'right');
       handled = true;
     }
 
@@ -408,6 +418,8 @@ function getEditorModel(card) {
     group.delayedSelfDamage = old.delayedSelfDamage || 0;
     group.delayedTurns = old.delayedTurns || 0;
     group.shuffleCopies = old.shuffleCopies || 0;
+    group.chainDamage = old.chainDamage || 0;
+    group.chainDamageStep = old.chainDamageStep || 1;
     group.condition = old.condition || '';
     group.conditionType = old.conditionType || '';
     group.conditionTarget = old.conditionTarget || 'enemyHero';
@@ -612,6 +624,21 @@ function buildEffectGroupHTML(group, index, totalGroups, cardType) {
           <input type="number" class="group-shuffle-copies" data-group-index="${index}" value="${group.shuffleCopies || 0}" min="0" max="20" />
         </label>
         <label>
+          <span>连锁伤害（多米诺效应）</span>
+          <input type="number" class="group-chain-damage" data-group-index="${index}" value="${group.chainDamage || 0}" min="0" max="99" />
+        </label>
+        <label>
+          <span>连锁伤害递增</span>
+          <input type="number" class="group-chain-step" data-group-index="${index}" value="${group.chainDamageStep || 1}" min="0" max="20" />
+        </label>
+        <label>
+          <span>连锁方向</span>
+          <select class="group-chain-direction" data-group-index="${index}">
+            <option value="right" ${group.chainDirection === 'right' ? 'selected' : ''}>向右</option>
+            <option value="left" ${group.chainDirection === 'left' ? 'selected' : ''}>向左</option>
+          </select>
+        </label>
+        <label>
           <span>召唤数量</span>
           <input type="number" class="group-summon-count" data-group-index="${index}" value="${group.summonCount || 0}" min="0" max="7" />
         </label>
@@ -723,6 +750,9 @@ function readEffectGroupFromDOM(groupEl) {
     delayedSelfDamage: getNum('group-delayed-damage'),
     delayedTurns: getNum('group-delayed-turns'),
     shuffleCopies: getNum('group-shuffle-copies'),
+    chainDamage: getNum('group-chain-damage'),
+    chainDamageStep: getNum('group-chain-step', 1),
+    chainDirection: getVal('group-chain-direction') || 'right',
     condition: getVal('group-condition'),
     conditionType: getVal('group-condition-type'),
     conditionTarget: getVal('group-condition-target') || 'enemyHero',
@@ -799,6 +829,18 @@ function buildEffectsFromModel(cardType, model) {
       effects.push({
         type: 'shuffleCopies',
         amount: group.shuffleCopies,
+        ...(trigger ? { trigger } : {}),
+      });
+    }
+
+    if (group.chainDamage > 0) {
+      effects.push({
+        type: 'adjacentChainDamage',
+        target: 'playerChoice',
+        targetKinds: ['minion'],
+        amount: group.chainDamage,
+        step: group.chainDamageStep || 1,
+        direction: group.chainDirection || 'right',
         ...(trigger ? { trigger } : {}),
       });
     }
@@ -1002,6 +1044,9 @@ function buildGeneratedText(card, model) {
         parts.push(`${prefix}在下 ${group.delayedTurns} 个回合中，每回合对你的英雄造成 ${group.delayedSelfDamage} 点伤害。`);
       }
       if (group.shuffleCopies > 0) parts.push(`${prefix}将 ${group.shuffleCopies} 张本牌的复制洗入你的牌库。`);
+      if (group.chainDamage > 0) {
+        parts.push(`${prefix}对一个随从造成 ${group.chainDamage} 点伤害。向相邻随从重复此效果，每次伤害增加 ${group.chainDamageStep || 1} 点。`);
+      }
       if (group.summonCount > 0) {
         const sKw = summarizeKeywords(group.summonKeywords);
         parts.push(`${prefix}召唤 ${group.summonCount} 个 ${group.summonAttack}/${group.summonHealth} ${group.summonName || '随从'}${sKw ? `（${sKw}）` : ''}。`);
