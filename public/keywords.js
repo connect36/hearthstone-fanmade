@@ -1,11 +1,16 @@
 export const KEYWORD_DEFINITIONS = Object.freeze([
   { id: 'taunt', label: '嘲讽' },
   { id: 'rush', label: '突袭' },
+  { id: 'charge', label: '冲锋' },
   { id: 'poisonous', label: '剧毒' },
   { id: 'divineShield', label: '圣盾' },
   { id: 'lifesteal', label: '吸血' },
   { id: 'windfury', label: '风怒' },
+  { id: 'megaWindfury', label: '超级风怒' },
   { id: 'reborn', label: '复生' },
+  { id: 'stealth', label: '潜行' },
+  { id: 'elusive', label: '扰魔' },
+  { id: 'immune', label: '免疫' },
 ]);
 
 export const KEYWORD_LABELS = Object.freeze(
@@ -51,7 +56,10 @@ export function buildKeywordText(input) {
 }
 
 export function getMaxAttacksPerTurn(input) {
-  return normalizeKeywords(input).includes('windfury') ? 2 : 1;
+  const kw = normalizeKeywords(input);
+  if (kw.includes('megaWindfury')) return 4;
+  if (kw.includes('windfury')) return 2;
+  return 1;
 }
 
 export function hasKeyword(entity, keyword) {

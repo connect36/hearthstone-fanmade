@@ -1,75 +1,102 @@
 # 更新日志
 
-## 2026-06-19 · 项目目录重命名
+## 2026-06-21 · 卡牌机制系统重构 (P0)
 
-- 项目目录由 `/Users/ruiliu/Documents/炉石传说卡组体验` 重命名为 `/Users/ruiliu/Documents/炉石传说游戏自制`。
-- 更新 README、AI 交接、开发指南与发布文档中的绝对路径。
-- Git 仓库、Claude Code 会话和本地 Node 服务继续使用同一项目内容。
+### 基础关键词补齐
+- `keywords.js` KEYWORD_DEFINITIONS 扩充至12个：新增 charge、megaWindfury、stealth、elusive、immune
+- `normalizeKeywords()` 不再错误过滤 charge、elusive 等已使用关键词
+- 编辑器/卡面/AI/实战统一识别这12个关键词
 
-## 2026-06-19 · 黑眼任务术与卡牌库页面
+### 新建机制模块
+- `public/mechanics.js` — 统一卡牌状态评估 `evaluateCardPlayState()`，返回 playable/reason/activeMechanics/visualState
+- `public/mechanic-conditions.js` — 条件判断函数：quickdraw/combo/outcast/finale/manathirst/holdingDragon/spellburst/frenzy/honorableKill/overheal
+- `public/mechanic-runtime.js` — 运行时状态管理：cardsPlayedThisTurn/spellsPlayedThisTurn/damageTakenThisTurn/healingDoneThisTurn/enteredHandTurn
 
-- 导入卡组代码 `AAEBAf0GBI+CA4T7A8jrBZWzBg3y0AL40AL6/gLLuQOVzQObzQPXzgPB0QPO+gXEngajoAbDuAbJ5AYAAA==`。
-- 当前默认套牌更新为狂野“黑眼任务术”，共 17 种、30 张。
-- 新增黑暗契约、巡游向导、黑眼、核心版亵渎 4 个 DBF 卡牌条目。
-- 保留第一套任务术作为套牌归档，不覆盖已有录入卡牌。
-- 新增 `/editor/library` 页面，集中展示 35 个已录入卡牌条目。
-- 新页面支持名称/文本/DBF ID 搜索，以及类型、来源筛选。
-- 新页面单独展示当前黑眼任务术、法力曲线、完整卡表与卡组代码。
-- 新页面可一键把当前套牌载入编辑器，并可从卡牌库直接跳转到对应编辑条目。
-- 黑暗契约增加消灭友方随从与治疗结算；黑眼增加条件复原法力；巡游向导记录下一次英雄技能费用。
-- `npm test` 现校验两套套牌归档、当前 17 种/30 张构成及新增卡牌完整性。
-- 合并旧版与核心版亵渎：统一使用 `hs-95688`，同时保留 DBF `42471` 历史别名和旧本地数据迁移。
+### 视觉状态三级体系
+- `is-locked` — 灰色，不可使用（费用不足/目标不存在/场地满/非己方回合）
+- `is-playable` — 绿色光晕，可正常打出
+- `is-trigger-ready` — 金色脉冲光晕，条件机制已激活（快枪/连击/流放/压轴/法力渴求）
+- `is-selected` — 蓝色，正在操作此牌（独立于以上三种）
 
-## 2026-06-19 · 任务术卡组与新机制编辑器
+### 运行时状态
+- 玩家 runtime 新增 `cardsPlayedThisTurn: []`，卡牌打出时自动记录
+- 卡牌实例新增 `enteredHandTurn` 字段追踪进入手牌的回合
+- 回合开始时统一清零
 
-### 依赖安全
+### 测试通过
+- 8 项机制测试全部通过：正常/快枪/快枪过期/连击/法力渴求/费用不足/流放/压轴
 
-- 将 `ws` 从 `8.20.0` 升级到 `8.21.0`。
-- `npm audit` 当前为 `0 vulnerabilities`。
+### Bug修复
+- 修复 `getScriptForTurn()` 对字符串 `turnScript` 调用 `.find()` 崩溃
+- 修复龙战AI返回的克隆对象引用导致随从重复攻击
+- 修复 `executeBossAction` 的 attack/location 分支操作克隆对象而非真实状态
+- 修复敌方回合结束时的残余攻击循环导致随从双倍打击
+- 添加AI动作卡死检测（连续3次相同动作→强制结束回合）
+- 添加无效动作跳过（执行后状态不变→跳过）
 
-### 卡组导入
+### AI架构重构
+- `decideDragonWarriorAction` 改为只返回单个动作，全程在 `cloneState()` 上模拟
+- App.js 改为逐动作请求-执行循环（请求→执行→渲染→重新请求）
+- 删除旧的 `decideDragonWarriorTurn` 批量规划模式
+- 删除回合末尾的残余自动攻击接管
+- 攻击/地标执行全部改为通过 `instanceId` 查找真实对象
 
-- 将卡组代码 `AAEBAcClBgrnywKPggOdqQOE+wPlsATEngbQngajoAaVswbRggcK3Ary0AL6/gKVzQPXzgPB0QPO+gXDuAbJ5AaEmQcAAA==` 解码为狂野术士卡组。
-- 默认卡组现为 20 种、30 张任务术卡牌。
-- 原有演示卡仍保留在编辑器中，但默认牌组数量调整为 `0`。
-- 增加任务奖励卡“枯萎化身塔姆辛”，不会直接进入起始牌组。
+### 固定教学牌序
+- `DW_DRAW_ORDER` 精确控制30张牌抽序
+- 起手: 载蛋雏龙→黑暗龙骑士→龙巢守护者→晦鳞巢母
+- T2进手: 乘风浮龙 ★  T4进手: 先觉蜿变幼龙 ★
+- 禁用起手调度防止破坏顺序
 
-### 编辑器升级
+### UI改进
+- 结束回合按钮改为右侧悬浮大圆形，三色状态（灰/金/绿）
+- 绿色仅当无可用动作时亮起（随从全攻击+手牌全不能出+技能已用）
+- 敌方手牌/牌库改用蓝色叠堆与铭牌统一显示
+- 手牌高度压缩（min-height 156→132px, padding缩减, gap 12→6px）
+- 可交易按钮固定在卡牌右上角
 
-- 新增“载入任务术卡组”按钮。
-- 新增机制标签：战吼、亡语、任务线、可交易、临时牌、发现。
-- 新增关键词：突袭。
-- 新增效果触发时机：使用时、战吼、亡语。
-- 新增结构化自伤数值。
-- 新增动态费用规则：缺失生命、本局自伤、当前回合生命变化次数。
-- 新增任务线阶段阈值和阶段奖励字段。
-- 新增延迟自伤与洗入复制字段。
-- 保留高级效果 JSON，用于相邻伤害、反复全场伤害、交换手牌等复杂效果。
-- 导入卡默认保留官方文本；需要时可手动切换为自动文本。
+## 2026-06-20 · 龙战AI陪练初版
 
-### 游戏运行时
+### 新增文件
+- `public/dragon-warrior-ai.js` — AI决策引擎
+- `public/dragon-warrior-cards.js` — 30张火焰龙战卡牌
+- `DRAGON_WARRIOR_AI_STRATEGY.md` — 完整策略文档
+- `HANDOFF.md` — 项目交接文档
 
-- 单人模式与 PvP 服务器增加自伤累计。
-- 支持“恶魔之种”三阶段 `12/12/12` 任务进度。
-- 前两阶段奖励为对敌方英雄造成 3 点伤害并恢复 3 点生命。
-- 最终阶段将“枯萎化身塔姆辛”加入手牌。
-- 塔姆辛战吼可将己方回合自伤转移给对手。
-- 支持三类动态费用并在手牌中实时显示。
-- 支持临时抽牌、回合结束移除临时牌、延迟自伤、洗入本牌复制。
-- 单人模式增加战吼、亡语、亡者复生、芬利换牌、亵渎、火焰之灾祸、多米诺效应和突袭的简化结算。
-- 玩家英雄区域显示本局自伤与任务线进度。
+### 龙战AI系统
+- 逐动作重新规划决策引擎
+- 斩杀搜索（格罗玛什+赤红深渊 12伤 / 格罗玛什+裂隙 13伤）
+- 龙锚点保护、火焰法术+火山顺序优化
+- 晦鳞巢母返费后继续使用剩余法力
+- 英雄技能与其他动作公平竞争
 
-### 验证
+### 卡牌机制新增
+- 武器系统（装备/攻击/耐久/动画: 飞入-挥砍-破碎）
+- 英雄技能按钮（生命分流/全副武装, 翻转动画）
+- 地标系统（耐久/冷却/移除, 赤红深渊+喷发火山完整实现）
+- 黑暗之赐10种 + 三选一发现
+- 烈火炙烤溢出回手
+- 现场播报员回溯（评分决策+重新随机）
+- 延系跨回合追踪
+- 敌方手牌背面/牌库叠堆显示
 
-- 新增 `npm test`，校验 30 张卡组、任务线三阶段、最终奖励及三类动态费用。
-- 通过 JavaScript 语法检查。
-- 通过编辑器、本地测试模式和浏览器控制台验收。
+### 效果处理器新增
+- `equipWeapon`, `heroGainAttack`, `refreshMana`, `overflowDamage`
+- `addRandomCard`, `drawMinion`, `enrageAttackBuff`, `damageOrDrawOrSummon`
+- `discoverDragonWithDarkGift`, `discoverWarriorWithDarkGift`
+- `locationPingBuff`, `locationRandomDamage`, `rewindableRandomWeapons`
+- `endOfTurnBuffRandomFriendlyDragon`
 
-### 已知差异
+### Bug修复
+- 多米诺效应: 两边有随从时随机方向（原固定右）
+- 血肉巨人: `healthChangesThisTurn` 仅玩家回合计数
+- 亡者复生: 无友方死亡时禁用
+- 指向性法术: 场上无随从时禁用
+- 巡游向导: 英雄技能正确减为0费
+- 塔姆辛: 伤害转移后治疗石仍有效
+- 手牌增量渲染防闪烁
 
-- “发现”当前自动取得牌库中第一张合法卡，还没有三选一界面。
-- “可交易”已经能编辑和显示，但尚未加入拖回牌库并支付 1 费的交互。
-- 多米诺效应当前默认向目标右侧结算，没有方向选择。
-- 火焰之灾祸当前按场上顺序选择敌方随从，不是随机选择。
-- 部分复杂专属效果已在单人模式可用，PvP 服务器仍以任务线、自伤和动态费用为优先实现范围。
-- 编辑器保存的数据位于当前浏览器的 `localStorage`；PvP 服务器使用项目内基础卡表，重新启动服务器后读取代码中的卡表。
+### 场景与模式
+- 新增 `dragon-warrior` 场景（大厅🐉按钮）
+- 龙战Boss拥有完整牌库/手牌/武器/地标系统
+- `cardOnlyTargetsMinionsSolo` 指向性法术禁用逻辑
+- 敌方手牌/牌库计数显示

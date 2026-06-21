@@ -112,18 +112,36 @@
                   <div class="keyword-checkboxes" id="keywords-container">
                     <label class="keyword-option"><input type="checkbox" name="keywords" value="taunt" /> 嘲讽</label>
                     <label class="keyword-option"><input type="checkbox" name="keywords" value="rush" /> 突袭</label>
+                    <label class="keyword-option"><input type="checkbox" name="keywords" value="charge" /> 冲锋</label>
                     <label class="keyword-option"><input type="checkbox" name="keywords" value="poisonous" /> 剧毒</label>
                     <label class="keyword-option"><input type="checkbox" name="keywords" value="divineShield" /> 圣盾</label>
                     <label class="keyword-option"><input type="checkbox" name="keywords" value="lifesteal" /> 吸血</label>
                     <label class="keyword-option"><input type="checkbox" name="keywords" value="windfury" /> 风怒</label>
+                    <label class="keyword-option"><input type="checkbox" name="keywords" value="megaWindfury" /> 超级风怒</label>
                     <label class="keyword-option"><input type="checkbox" name="keywords" value="reborn" /> 复生</label>
+                    <label class="keyword-option"><input type="checkbox" name="keywords" value="stealth" /> 潜行</label>
+                    <label class="keyword-option"><input type="checkbox" name="keywords" value="elusive" /> 扰魔</label>
+                    <label class="keyword-option"><input type="checkbox" name="keywords" value="immune" /> 免疫</label>
                   </div>
                 </label>
               </fieldset>
 
-              <!-- === 卡牌级特殊机制 === -->
+              <!-- === 卡牌机制（手动选择） === -->
               <fieldset class="form-fieldset">
-                <legend>卡牌机制（从效果自动派生，无需手动勾选）</legend>
+                <legend>触发机制（手牌条件）</legend>
+                <div class="mechanic-checkboxes" id="mechanics-container">
+                  <label class="mechanic-option"><input type="checkbox" name="mechanics" value="quickdraw" /> 快枪 ⚡</label>
+                  <label class="mechanic-option"><input type="checkbox" name="mechanics" value="combo" /> 连击 🔗</label>
+                  <label class="mechanic-option"><input type="checkbox" name="mechanics" value="outcast" /> 流放 ↔</label>
+                  <label class="mechanic-option"><input type="checkbox" name="mechanics" value="finale" /> 压轴 🎯</label>
+                  <label class="mechanic-option"><input type="checkbox" name="mechanics" value="manathirst" /> 法力渴求 💎<input type="number" id="field-manathirst-threshold" name="manathirstThreshold" min="1" max="20" value="5" style="width:50px;margin-left:4px" /></label>
+                </div>
+                <p class="form-hint" id="mechanic-type-hint" style="display:none;margin-top:4px;color:var(--gold-soft)"></p>
+              </fieldset>
+
+              <!-- === 自动派生机制（只读） === -->
+              <fieldset class="form-fieldset">
+                <legend>卡牌机制（从效果自动派生）</legend>
                 <div id="derived-mechanics" class="derived-mechanics">
                   <span class="mechanic-badge" data-mechanic="battlecry" style="display:none">战吼</span>
                   <span class="mechanic-badge" data-mechanic="deathrattle" style="display:none">亡语</span>
@@ -134,6 +152,12 @@
                   <span class="mechanic-badge" data-mechanic="lifesteal" style="display:none">吸血</span>
                   <span class="mechanic-badge" data-mechanic="questReward" style="display:none">任务奖励</span>
                 </div>
+              </fieldset>
+
+              <!-- === 机制附效配置（每个机制独立） === -->
+              <fieldset id="mechanic-bonus-fields" class="form-fieldset" style="display:none">
+                <legend>机制附效（触发时额外执行）</legend>
+                <div id="bonus-effects-container"></div>
               </fieldset>
 
               <!-- === 任务线（每阶段独立配置） === -->
@@ -208,6 +232,14 @@
               </div>
             </div>
 
+            <div style="margin-bottom:8px">
+              <label style="display:inline-flex;align-items:center;gap:6px;font-size:0.85rem">
+                <select id="preview-state-toggle" style="width:auto">
+                  <option value="inactive">条件未满足 (绿)</option>
+                  <option value="active">条件已满足 (黄)</option>
+                </select>
+              </label>
+            </div>
             <div id="preview-card" class="preview-card"></div>
             <pre id="preview-json" class="preview-json"></pre>
           </section>

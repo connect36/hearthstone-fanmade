@@ -162,23 +162,23 @@
             data-side="enemy"
           >
             <div class="hero-panel__frame">
-              <div class="enemy-portrait-cluster">
-                <div class="hero-avatar hero-avatar--enemy" aria-hidden="true"></div>
-                <!-- 敌方手牌只显示紧凑卡背叠堆与数量，不再单独占据一整行 -->
-                <div class="enemy-hand-zone" id="enemy-hand-zone" data-zone="enemy-hand" style="display:none;" aria-label="敌方手牌与牌库">
-                  <div class="hand-track hand-track--enemy" id="enemy-hand-cards" aria-hidden="true"></div>
-                  <span class="enemy-hand-count" id="enemy-hand-count-hint">×0</span>
-                  <div class="deck-stack deck-stack--enemy" id="enemy-deck-stack" aria-label="敌方牌库">
-                    <span class="deck-stack__count" id="enemy-deck-count">0</span>
-                  </div>
-                </div>
-              </div>
+              <div class="hero-avatar hero-avatar--enemy" aria-hidden="true"></div>
               <div class="hero-copy">
                 <p class="section-label">敌方英雄区</p>
                 <h2 class="hero-name" id="enemy-hero-name">等待接入</h2>
                 <p class="hero-note" id="enemy-hero-note">
                   敌方英雄状态、生命值与护甲会在这里显示。
                 </p>
+                <!-- 敌方手牌/牌库计数 -->
+                <div class="enemy-stats-row" id="enemy-stats-row" style="display:none;">
+                  <div class="deck-stack deck-stack--enemy" id="enemy-deck-stack" aria-label="敌方牌库">
+                    <span class="deck-stack__count" id="enemy-deck-count">0</span>
+                  </div>
+                  <span class="enemy-hand-badge">
+                    <span class="enemy-hand-badge__icon">🂠</span>
+                    <span class="enemy-hand-badge__count" id="enemy-hand-count-hint">0</span>
+                  </span>
+                </div>
               </div>
               <div class="hero-resources" aria-label="敌方资源">
                 <span class="resource-pill resource-pill--health" id="enemy-health">
@@ -293,13 +293,15 @@
             <button id="restart-button" type="button" class="action-button action-button--ghost">
               重新开始
             </button>
-            <button id="end-turn-button" type="button" class="action-button action-button--primary">
-              结束回合
-            </button>
             <a href="/editor" class="action-button action-button--ghost">
               卡牌编辑器
             </a>
           </section>
+
+          <!-- 结束回合按钮 — 右侧悬浮，炉石风格 -->
+          <button id="end-turn-button" type="button" class="end-turn-btn" disabled>
+            <span class="end-turn-btn__label">结束回合</span>
+          </button>
         </section>
 
         <aside class="utility-stack">

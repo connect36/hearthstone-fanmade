@@ -5,6 +5,7 @@ import {
   saveCardOverrides,
 } from './card-overrides.js';
 import { buildKeywordText, normalizeKeywords, summarizeKeywords } from './keywords.js';
+import { extractStructuredEffects, editorModelToCard, cleanFieldsForType, BONUS_EFFECT_TYPES, createEmptyBonusEffect } from './editor-model.js';
 
 const deckCountMap = Object.fromEntries(starterDeck.map((entry) => [entry.cardId, entry.count]));
 
@@ -27,6 +28,12 @@ const elements = {
   fieldAttack: document.getElementById('field-attack'),
   fieldHealth: document.getElementById('field-health'),
   fieldKeywords: [...document.querySelectorAll('input[name="keywords"]')],
+  // 手动机制选择
+  fieldMechanics: [...document.querySelectorAll('input[name="mechanics"]')],
+  fieldManathirstThreshold: document.getElementById('field-manathirst-threshold'),
+  mechanicBonusFields: document.getElementById('mechanic-bonus-fields'),
+  bonusEffectsContainer: document.getElementById('bonus-effects-container'),
+  mechanicTypeHint: document.getElementById('mechanic-type-hint'),
   // 派生机制徽章
   derivedMechanics: document.getElementById('derived-mechanics'),
   // 任务线
@@ -100,9 +107,21 @@ function normalizeCard(card) {
   };
 }
 
+const KNOWN_MECHANICS = ['quickdraw','combo','outcast','finale','manathirst','battlecry','deathrattle','questline','tradeable','temporary','discover','questReward'];
+
 function normalizeMechanics(input) {
-  return [...new Set(Array.isArray(input) ? input.filter(Boolean) : [])];
+  if (!input) return [];
+  const arr = Array.isArray(input) ? input : String(input).split(/[,\s，、]+/).filter(Boolean);
+  return [...new Set(arr.filter(m => KNOWN_MECHANICS.includes(m)))];
 }
+
+// ── mechanics 标签 ──────────────────────────────────────────
+const MECHANIC_LABELS = {
+  battlecry: '战吼', deathrattle: '亡语', questline: '任务线',
+  tradeable: '可交易', temporary: '临时牌', discover: '发现',
+  lifesteal: '吸血', questReward: '任务奖励',
+  quickdraw: '快枪', combo: '连击', outcast: '流放', finale: '压轴', manathirst: '法力渴求',
+};
 
 // ── Toast 通知 ────────────────────────────────────────────────
 
@@ -185,13 +204,7 @@ function createEmptyQuestStage() {
   };
 }
 
-// ── mechanics 派生（从 effects 数组计算，不再手动编辑） ────────
-
-const MECHANIC_LABELS = {
-  battlecry: '战吼', deathrattle: '亡语', questline: '任务线',
-  tradeable: '可交易', temporary: '临时牌', discover: '发现',
-  lifesteal: '吸血', questReward: '任务奖励',
-};
+// ── mechanics 处理 ──────────────────────────────────────────
 
 function deriveMechanicsFromCard(card, existingMechanics = []) {
   const derived = new Set();
@@ -244,231 +257,6 @@ function updateDerivedMechanicsDisplay(model, card) {
   }
 }
 
-// ── extractStructuredEffects（从 effects 数组提取结构化模型）───
-
-function extractStructuredEffects(card) {
-  const model = createDefaultEditorModel(card.type);
-  model.keywords = normalizeKeywords(card.keywords);
-  model.costRule = card.costModifier?.rule === 'healthChangedThisTurn'
-    ? 'healthChangedThisGame'
-    : (card.costModifier?.rule || '');
-  model.costMinimum = Number(card.costModifier?.minimum) || 0;
-
-  const effects = card.effects || [];
-  const unhandled = [];
-  const groupsByTrigger = new Map(); // trigger → effectGroup
-
-  function ensureGroup(trigger) {
-    const key = trigger || 'onPlay';
-    if (!groupsByTrigger.has(key)) {
-      groupsByTrigger.set(key, createEmptyEffectGroup(key));
-    }
-    return groupsByTrigger.get(key);
-  }
-
-  function setIfFirst(group, key, value) {
-    // 只在第一次设置（避免覆盖）
-    if (group[key] === 0 || group[key] === '' || (Array.isArray(group[key]) && group[key].length === 0)) {
-      group[key] = value;
-      return true;
-    }
-    return false;
-  }
-
-  for (const effect of effects) {
-    let handled = false;
-    const trigger = effect.trigger || 'onPlay';
-
-    // 任务线 — 卡牌级效果（每阶段独立配置）
-    if (effect.type === 'questline') {
-      model.questlineEnabled = true;
-      model.questFinalReward = effect.finalRewardCardId || 'hs-67547';
-      // 新格式：effect.stages 数组
-      if (Array.isArray(effect.stages) && effect.stages.length > 0) {
-        model.questStages = effect.stages.map(s => ({
-          threshold: Number(s.threshold) || 12,
-          rewardDamage: Number(s.rewardDamage) || 0,
-          damageTarget: s.damageTarget || 'enemyHero',
-          damageLifesteal: s.damageLifesteal === true,
-        }));
-      } else if (Array.isArray(effect.thresholds) && effect.thresholds.length > 0) {
-        // 旧格式迁移
-        const rd = Number(effect.rewardDamage) || 0;
-        model.questStages = effect.thresholds.map(t => ({
-          threshold: Number(t) || 12,
-          rewardDamage: rd, damageTarget: 'enemyHero', damageLifesteal: rd > 0,
-        }));
-      } else {
-        model.questStages = [
-          { threshold: 12, rewardDamage: 3, damageTarget: 'enemyHero', damageLifesteal: true },
-          { threshold: 12, rewardDamage: 3, damageTarget: 'enemyHero', damageLifesteal: true },
-          { threshold: 12, rewardDamage: 0, damageTarget: 'enemyHero', damageLifesteal: false },
-        ];
-      }
-      handled = true;
-    }
-
-    // redirectSelfDamage / restoreDamageThisTurn — 卡牌级效果
-    if (effect.type === 'redirectSelfDamage' || effect.type === 'restoreDamageThisTurn' ||
-        effect.type === 'returnDeadFriendlyMinions' || effect.type === 'destroyFriendlyAndRandomEnemies' ||
-        effect.type === 'grantKeyword' || effect.type === 'repeatAoeWhileMinionDies' ||
-        effect.type === 'swapHandWithDeckBottom' || effect.type === 'opponentSpellTax') {
-      unhandled.push(clone(effect));
-      handled = true;
-    }
-
-    // 多米诺效应 — 连锁伤害（结构化字段）
-    if (effect.type === 'adjacentChainDamage') {
-      const group = ensureGroup(trigger);
-      setIfFirst(group, 'chainDamage', Number(effect.amount) || 0);
-      setIfFirst(group, 'chainDamageStep', Number(effect.step) || 1);
-      setIfFirst(group, 'chainDirection', effect.direction || 'right');
-      handled = true;
-    }
-
-    if (handled) continue;
-
-    const group = ensureGroup(trigger);
-
-    if (effect.type === 'selfDamage') {
-      setIfFirst(group, 'selfDamage', Number(effect.amount) || 0);
-    } else if (effect.type === 'damage') {
-      if (setIfFirst(group, 'damage', Number(effect.amount) || 0)) {
-        group.damageTarget = effect.target || 'enemyHero';
-      } else {
-        unhandled.push(clone(effect));
-      }
-    } else if (effect.type === 'heal') {
-      setIfFirst(group, 'heal', Number(effect.amount) || 0);
-    } else if (effect.type === 'armor') {
-      setIfFirst(group, 'armor', Number(effect.amount) || 0);
-    } else if (effect.type === 'draw') {
-      setIfFirst(group, 'draw', Number(effect.amount) || 0);
-    } else if (effect.type === 'summon' && effect.target === 'friendlyBoard') {
-      if (setIfFirst(group, 'summonCount', Number(effect.amount) || 0)) {
-        group.summonName = effect.minion?.name || '';
-        group.summonAttack = Number(effect.minion?.attack) || 1;
-        group.summonHealth = Number(effect.minion?.health) || 1;
-        group.summonKeywords = normalizeKeywords(effect.minion?.keywords);
-      } else {
-        unhandled.push(clone(effect));
-      }
-    } else if (effect.type === 'buff' && effect.target === 'friendlyMinions') {
-      setIfFirst(group, 'buffAttack', Number(effect.attack) || 0);
-      setIfFirst(group, 'buffHealth', Number(effect.health) || 0);
-    } else if (effect.type === 'delayedSelfDamage') {
-      setIfFirst(group, 'delayedSelfDamage', Number(effect.amount) || 0);
-      setIfFirst(group, 'delayedTurns', Number(effect.turns) || 0);
-    } else if (effect.type === 'shuffleCopies') {
-      setIfFirst(group, 'shuffleCopies', Number(effect.amount) || 0);
-    } else if (effect.type === 'conditional') {
-      const nested = Array.isArray(effect.effects) ? effect.effects[0] : null;
-      if (nested && ['damage', 'heal', 'armor', 'draw'].includes(nested.type)) {
-        setIfFirst(group, 'condition', effect.condition || '');
-        setIfFirst(group, 'conditionType', nested.type);
-        setIfFirst(group, 'conditionTarget', nested.target || 'enemyHero');
-        setIfFirst(group, 'conditionAmount', Number(nested.amount) || 0);
-      } else {
-        unhandled.push(clone(effect));
-      }
-    } else if (effect.type === 'discoverFromDeck') {
-      unhandled.push(clone(effect));
-    } else {
-      unhandled.push(clone(effect));
-    }
-  }
-
-  // 构建 triggerGroups 列表（保持顺序：onPlay, battlecry, deathrattle）
-  const triggerOrder = ['onPlay', 'battlecry', 'deathrattle'];
-  model.triggerGroups = [];
-  for (const key of triggerOrder) {
-    if (groupsByTrigger.has(key)) model.triggerGroups.push(groupsByTrigger.get(key));
-  }
-  // 任何其他 trigger
-  for (const [key, group] of groupsByTrigger) {
-    if (!triggerOrder.includes(key)) model.triggerGroups.push(group);
-  }
-  if (model.triggerGroups.length === 0) {
-    model.triggerGroups = [createEmptyEffectGroup('onPlay')];
-  }
-
-  model.extraEffects = unhandled;
-  return model;
-}
-
-// ── 获取/迁移 editorModel ────────────────────────────────────
-
-function getEditorModel(card) {
-  // 迁移旧格式 → 新格式
-  if (card.editorModel && !card.editorModel.triggerGroups && card.editorModel.trigger !== undefined) {
-    // 旧格式：扁平字段 → 迁移到 triggerGroups
-    const old = card.editorModel;
-    const group = createEmptyEffectGroup(old.trigger || 'onPlay');
-    group.selfDamage = old.selfDamage || 0;
-    group.damage = old.damage || 0;
-    group.damageTarget = old.damageTarget || 'enemyHero';
-    group.heal = old.heal || 0;
-    group.armor = old.armor || 0;
-    group.draw = old.draw || 0;
-    group.summonCount = old.summonCount || 0;
-    group.summonName = old.summonName || '';
-    group.summonAttack = old.summonAttack || 1;
-    group.summonHealth = old.summonHealth || 1;
-    group.summonKeywords = old.summonKeywords || [];
-    group.buffAttack = old.buffAttack || 0;
-    group.buffHealth = old.buffHealth || 0;
-    group.delayedSelfDamage = old.delayedSelfDamage || 0;
-    group.delayedTurns = old.delayedTurns || 0;
-    group.shuffleCopies = old.shuffleCopies || 0;
-    group.chainDamage = old.chainDamage || 0;
-    group.chainDamageStep = old.chainDamageStep || 1;
-    group.condition = old.condition || '';
-    group.conditionType = old.conditionType || '';
-    group.conditionTarget = old.conditionTarget || 'enemyHero';
-    group.conditionAmount = old.conditionAmount || 0;
-
-    // 迁移旧 questline 格式 → 新 questStages
-    const oldThresholds = old.questThresholds || [];
-    const oldRewardDmg = old.questRewardDamage || 0;
-    const questStages = oldThresholds.length > 0
-      ? oldThresholds.map(t => ({ threshold: t, rewardDamage: oldRewardDmg, damageTarget: 'enemyHero', damageLifesteal: oldRewardDmg > 0 }))
-      : [{ threshold: 12, rewardDamage: 3, damageTarget: 'enemyHero', damageLifesteal: true }, { threshold: 12, rewardDamage: 3, damageTarget: 'enemyHero', damageLifesteal: true }, { threshold: 12, rewardDamage: 0, damageTarget: 'enemyHero', damageLifesteal: false }];
-
-    card.editorModel = {
-      keywords: old.keywords || [],
-      questlineEnabled: !!(oldThresholds.length),
-      questStages,
-      questFinalReward: 'hs-67547',
-      costRule: old.costRule === 'healthChangedThisTurn' ? 'healthChangedThisGame' : (old.costRule || ''),
-      costMinimum: old.costMinimum || 0,
-      triggerGroups: [group],
-      extraEffects: old.extraEffects || [],
-    };
-  }
-
-  if (!card.editorModel) {
-    card.editorModel = extractStructuredEffects(card);
-  }
-
-  // 确保必要字段存在
-  const m = card.editorModel;
-  if (!m.triggerGroups || !Array.isArray(m.triggerGroups) || m.triggerGroups.length === 0) {
-    m.triggerGroups = [createEmptyEffectGroup('onPlay')];
-  }
-  m.keywords = normalizeKeywords(m.keywords);
-  m.questStages = Array.isArray(m.questStages) && m.questStages.length > 0
-    ? m.questStages.map(s => ({
-        threshold: s.threshold || 12,
-        rewardDamage: s.rewardDamage || 0,
-        damageTarget: s.damageTarget || 'enemyHero',
-        damageLifesteal: s.damageLifesteal === true,
-      }))
-    : [{ threshold: 12, rewardDamage: 3, damageTarget: 'enemyHero', damageLifesteal: true }, { threshold: 12, rewardDamage: 3, damageTarget: 'enemyHero', damageLifesteal: true }, { threshold: 12, rewardDamage: 0, damageTarget: 'enemyHero', damageLifesteal: false }];
-  m.questFinalReward = m.questFinalReward || 'hs-67547';
-  m.extraEffects = Array.isArray(m.extraEffects) ? m.extraEffects : [];
-
-  return m;
-}
 
 // ── 任务线阶段 DOM 渲染 ──────────────────────────────────────
 
@@ -1097,18 +885,6 @@ function applyCardTypeDisables(cardType) {
   }
 }
 
-function cleanFieldsForType(cardType, model) {
-  if (cardType === 'spell') {
-    // 清理随从专属数据
-    model.keywords = [];
-    for (const group of model.triggerGroups) {
-      group.trigger = group.trigger === 'battlecry' || group.trigger === 'deathrattle' ? 'onPlay' : group.trigger;
-    }
-  }
-  // 随从可以保留一切
-  return model;
-}
-
 // ── Schema 校验 ──────────────────────────────────────────────
 
 function validateModel(cardType, model) {
@@ -1174,6 +950,20 @@ function renderEditor() {
   elements.fieldHealth.value = String(card.health ?? 1);
   writeKeywordCheckboxes(elements.fieldKeywords, model.keywords);
 
+  // 手动机制
+  const activeMechanics = new Set(model.mechanics || []);
+  for (const input of elements.fieldMechanics) {
+    input.checked = activeMechanics.has(input.value);
+  }
+  if (elements.fieldManathirstThreshold) {
+    elements.fieldManathirstThreshold.value = String(model.manathirstThreshold || 5);
+  }
+  // 法术禁用提示
+  if (elements.mechanicTypeHint) {
+    elements.mechanicTypeHint.style.display = isSpell ? '' : 'none';
+  }
+  renderBonusEffectFields(model);
+
   // 任务线
   elements.fieldQuestlineEnabled.value = String(model.questlineEnabled);
   if (elements.questStagesContainer) {
@@ -1219,13 +1009,27 @@ function renderPreview() {
     ? `<div class="preview-card__stats"><span>攻 ${card.attack}</span><span>血 ${card.health}</span></div>`
     : '';
 
+  // 机制预览
+  const mechs = (card.mechanics || []).filter(m => ['quickdraw','combo','outcast','finale','manathirst'].includes(m));
+  const mechLabels = mechs.map(m => MECHANIC_LABELS[m] || m).join(' · ');
+  const mechMarkup = mechLabels ? `<div class="preview-card__mechanics">${mechLabels}</div>` : '';
+
+  // 预览切换
+  const toggleEl = document.getElementById('preview-state-toggle');
+  const showActive = toggleEl && toggleEl.value === 'active';
+  const hasMechanics = mechs.length > 0;
+  const stateClass = !hasMechanics ? '' : (showActive ? 'preview-card--ready' : 'preview-card--playable');
+
   elements.previewCard.innerHTML = `
-    <span class="preview-card__cost">${card.cost}</span>
-    <div class="preview-card__name">${card.name}</div>
-    <div class="preview-card__meta">${card.type === 'minion' ? '随从' : '法术'} · ${card.id} · ${card.enabled ? '启用' : '禁用'} · 牌组 ${card.deckCount}</div>
-    ${keywordMarkup}
-    ${effectText}
-    ${statMarkup}`;
+    <div class="preview-card ${stateClass}">
+      <span class="preview-card__cost">${card.cost}</span>
+      <div class="preview-card__name">${card.name}</div>
+      <div class="preview-card__meta">${card.type === 'minion' ? '随从' : '法术'} · ${card.id} · ${card.enabled ? '启用' : '禁用'} · 牌组 ${card.deckCount}</div>
+      ${keywordMarkup}
+      ${mechMarkup}
+      ${effectText}
+      ${statMarkup}
+    </div>`;
 
   elements.previewJson.textContent = JSON.stringify(card, null, 2);
 }
@@ -1237,6 +1041,71 @@ function render() {
   renderList();
   renderEditor();
   renderPreview();
+}
+
+// ── 机制附效渲染（结构化） ─────────────────────────────────
+
+function effTypeFields(mech, ef) {
+  let f = '';
+  if (ef.type === 'buffSelf') {
+    f = `<label style="flex:1">攻<input type="number" name="bonus-attack-${mech}" value="${ef.attack||1}" min="0" max="30" style="width:48px"/></label>
+         <label style="flex:1">血<input type="number" name="bonus-health-${mech}" value="${ef.health||1}" min="0" max="30" style="width:48px"/></label>`;
+  } else if (ef.type === 'summon') {
+    f = `<label style="flex:1">数量<input type="number" name="bonus-amount-${mech}" value="${ef.amount||1}" min="1" max="7" style="width:44px"/></label>
+         <label style="flex:1">名称<input type="text" name="bonus-name-${mech}" value="${ef.minion?.name||ef.name||'Token'}" style="width:56px"/></label>
+         <label style="flex:1">攻<input type="number" name="bonus-attack-${mech}" value="${ef.minion?.attack||ef.attack||1}" min="0" max="30" style="width:40px"/></label>
+         <label style="flex:1">血<input type="number" name="bonus-health-${mech}" value="${ef.minion?.health||ef.health||1}" min="1" max="60" style="width:40px"/></label>`;
+  } else {
+    const topts = ['playerChoice','enemyHero','friendlyHero','friendlyMinion'].map(t=>`<option value="${t}" ${(ef.target||'playerChoice')===t?'selected':''}>${t}</option>`).join('');
+    f = `<select name="bonus-target-${mech}" style="flex:2">${topts}</select>
+         <label style="flex:1">数值<input type="number" name="bonus-amount-${mech}" value="${ef.amount||1}" min="0" max="30" style="width:48px"/></label>`;
+  }
+  return f;
+}
+
+function renderBonusEffectFields(model) {
+  if (!elements.bonusEffectsContainer) return;
+  const mlist = model.mechanics || [];
+  if (mlist.length === 0) { elements.mechanicBonusFields.style.display = 'none'; return; }
+  elements.mechanicBonusFields.style.display = '';
+  const cur = model.bonusMechanicEffects || {};
+  elements.bonusEffectsContainer.innerHTML = mlist.map(mech => {
+    const ef = (cur[mech] || [{ type:'damage',target:'playerChoice',amount:1 }])[0];
+    const topts = BONUS_EFFECT_TYPES.map(t => `<option value="${t}" ${ef.type===t?'selected':''}>${t}</option>`).join('');
+    return `<div class="form-span" style="margin-bottom:6px;padding:6px;border:1px solid rgba(255,255,255,0.1);border-radius:6px">
+      <strong>${MECHANIC_LABELS[mech]||mech}</strong>
+      <div style="display:flex;gap:6px;margin-top:4px;align-items:center;flex-wrap:wrap">
+        <select name="bonus-type-${mech}" style="flex:1;min-width:70px">${topts}</select>
+        ${effTypeFields(mech, ef)}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function readBonusEffectsFromForm(model) {
+  const bonus = {};
+  for (const mech of (model.mechanics || [])) {
+    const te = document.querySelector(`select[name="bonus-type-${mech}"]`);
+    if (!te) continue;
+    const t = te.value;
+    const ef = { type: t };
+    if (t === 'buffSelf') {
+      ef.attack = Number(document.querySelector(`input[name="bonus-attack-${mech}"]`)?.value) || 0;
+      ef.health = Number(document.querySelector(`input[name="bonus-health-${mech}"]`)?.value) || 0;
+    } else if (t === 'summon') {
+      ef.amount = Number(document.querySelector(`input[name="bonus-amount-${mech}"]`)?.value) || 1;
+      ef.minion = {
+        name: document.querySelector(`input[name="bonus-name-${mech}"]`)?.value || 'Token',
+        attack: Number(document.querySelector(`input[name="bonus-attack-${mech}"]`)?.value) || 1,
+        health: Number(document.querySelector(`input[name="bonus-health-${mech}"]`)?.value) || 1,
+      };
+    } else {
+      ef.target = document.querySelector(`select[name="bonus-target-${mech}"]`)?.value || 'playerChoice';
+      ef.amount = Number(document.querySelector(`input[name="bonus-amount-${mech}"]`)?.value) || 1;
+    }
+    bonus[mech] = [ef, ...((model.bonusMechanicEffects||{})[mech]||[]).slice(1)];
+  }
+  return bonus;
 }
 
 // ── 保存逻辑 ────────────────────────────────────────────────
@@ -1271,6 +1140,14 @@ function updateSelectedCardFromForm() {
 
   // 读取新模型
   card.editorModel = readStructuredModelFromForm(extraEffects);
+
+  // 读取手动机制
+  card.editorModel.mechanics = elements.fieldMechanics.filter(i => i.checked).map(i => i.value);
+  card.editorModel.manathirstThreshold = toNumber(elements.fieldManathirstThreshold?.value) || 5;
+  card.editorModel.bonusMechanicEffects = readBonusEffectsFromForm(card.editorModel);
+
+  // 使用模块化转换写入卡牌最终数据
+  editorModelToCard(card.editorModel, card);
 
   // 类型切换清理
   if (oldType !== newType) {

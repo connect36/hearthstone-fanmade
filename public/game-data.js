@@ -171,10 +171,57 @@ export const deckCollections = Object.freeze([
 
 export const currentDeckCollection = deckCollections[1];
 
+// ── 机制测试卡牌 ──────────────────────────────────────────────
+export const mechanicTestCards = Object.freeze([
+  {
+    id: 'mt-quickdraw', name: '快枪测试', cost: 1, type: 'minion', attack: 1, health: 1, deckCount: 2,
+    text: '快枪：获得+1/+1。',
+    mechanics: ['quickdraw'],
+    effects: [],
+    bonusMechanicEffects: { quickdraw: [{ type: 'buffSelf', attack: 1, health: 1 }] },
+  },
+  {
+    id: 'mt-combo', name: '连击测试', cost: 2, type: 'spell', deckCount: 2,
+    text: '造成2点伤害。连击：额外造成2点。',
+    mechanics: ['combo'],
+    effects: [{ type: 'damage', target: 'playerChoice', amount: 2 }],
+    bonusMechanicEffects: { combo: [{ type: 'damage', target: 'playerChoice', amount: 2 }] },
+  },
+  {
+    id: 'mt-finale', name: '压轴测试', cost: 3, type: 'spell', deckCount: 2,
+    text: '召唤一个1/1随从。压轴：额外召唤一个。',
+    mechanics: ['finale'],
+    effects: [{ type: 'summon', target: 'friendlyBoard', amount: 1, minion: { name: 'Token', attack: 1, health: 1 } }],
+    bonusMechanicEffects: { finale: [{ type: 'summon', target: 'friendlyBoard', amount: 1, minion: { name: 'Token', attack: 1, health: 1 } }] },
+  },
+  {
+    id: 'mt-outcast', name: '流放测试', cost: 1, type: 'spell', deckCount: 2,
+    text: '造成1点伤害。流放：额外造成2点。',
+    mechanics: ['outcast'],
+    effects: [{ type: 'damage', target: 'playerChoice', amount: 1 }],
+    bonusMechanicEffects: { outcast: [{ type: 'damage', target: 'playerChoice', amount: 2 }] },
+  },
+]);
+
+export const mechanicTestDeck = [
+  { cardId: 'mt-quickdraw', count: 2 },
+  { cardId: 'mt-combo', count: 2 },
+  { cardId: 'mt-finale', count: 2 },
+  { cardId: 'mt-outcast', count: 2 },
+  { cardId: 'hs-64900', count: 1 },
+  { cardId: 'hs-59223', count: 2 },
+  { cardId: 'hs-111177', count: 2 },
+  { cardId: 'hs-49018', count: 2 },
+  { cardId: 'hs-102212', count: 2 },
+  { cardId: 'hs-59585', count: 2 },
+  { cardId: 'hs-97614', count: 2 },
+];
+
 export const cards = Object.freeze([
   ...questlineDeckCards,
   ...additionalRecordedCards,
   ...dragonWarriorCards,
+  ...mechanicTestCards,
   {
     id: 'ember-bolt',
     name: '余烬箭',

@@ -619,3 +619,78 @@ h1 {
     padding: 18px;
   }
 }
+
+/* ── 机制复选框 ────────────────────────────── */
+
+.mechanic-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mechanic-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(245, 223, 173, 0.2);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+.mechanic-option:hover {
+  border-color: rgba(245, 223, 173, 0.4);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mechanic-option input:checked + * {
+  color: var(--gold);
+}
+
+/* ── 预览机制状态 ──────────────────────────── */
+
+.preview-card__mechanics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(240, 200, 60, 0.12);
+  border: 1px solid rgba(230, 180, 40, 0.3);
+  color: #e8c840;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.preview-card--playable {
+  box-shadow: 0 0 10px rgba(100, 200, 60, 0.3);
+  border-color: rgba(120, 220, 100, 0.45);
+}
+
+.preview-card--ready {
+  box-shadow: 0 0 14px rgba(230, 180, 40, 0.4);
+  border-color: rgba(240, 200, 60, 0.55);
+}
+
+/* ── 只读机制徽章 ──────────────────────────── */
+
+.derived-mechanics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mechanic-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 223, 173, 0.25);
+  background: rgba(245, 223, 173, 0.08);
+  color: var(--gold-soft);
+  font-size: 0.78rem;
+  font-weight: 600;
+}

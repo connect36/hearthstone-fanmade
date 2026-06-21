@@ -1,4 +1,4 @@
-import { encounter, rulesText, starterDeck, cards as baseCards } from './game-data.js';
+import { encounter, rulesText, starterDeck, cards as baseCards, mechanicTestDeck } from './game-data.js';
 import { applyCardOverrides } from './card-overrides.js';
 import {
   buildKeywordText,
@@ -12,8 +12,10 @@ import {
 } from './keywords.js';
 import { network } from './network.js';
 import { hideBattlegroundsView, renderBattlegroundsView } from './battlegrounds-view.js';
-import { decideDragonWarriorTurn, mulliganDragonWarrior } from './dragon-warrior-ai.js';
+import { decideDragonWarriorAction, decideDragonWarriorTurn, mulliganDragonWarrior } from './dragon-warrior-ai.js';
 import { dragonWarriorDeck } from './dragon-warrior-cards.js';
+import { evaluateCardPlayState } from './mechanics.js';
+import { createCardInstance, markCardEnteredHand, recordCardPlayed, clearTurnState } from './mechanic-runtime.js';
 import './animations.js';
 
 // ============================================
@@ -114,10 +116,35 @@ const DRAGON_WARRIOR_SCENARIO = Object.freeze({
   ],
 });
 
+const MECHANICS_TEST_SCENARIO = Object.freeze({
+  scenarioId: 'mechanics-test',
+  id: 'mechanics_test',
+  title: '炉边酒馆',
+  subtitle: '机制测试',
+  description: '快枪/连击/流放/压轴测试场景。玩家使用4种测试牌。',
+  modeLabel: '机制测试中',
+  turnLimit: null,
+  rulesText: '这个场景用于测试卡牌机制：快枪、连击、流放、压轴。',
+  player: {
+    ...encounter.player,
+  },
+  boss: {
+    name: '测试陪练',
+    heroHealth: 30,
+    heroArmor: 0,
+    heroPower: { name: '测试', cost: 2, text: '测试', effects: [] },
+    passive: { name: '测试', text: '测试Boss。' },
+    aiBias: { style: 'sandbox', priorities: [] },
+    turnScript: [{ turn: 1, action: 'armor', amount: 2, line: '获得2点护甲' }],
+  },
+  objectives: [{ id: 'mech-test', type: 'test', text: '测试快枪/连击/流放/压轴。' }],
+});
+
 const SOLO_SCENARIOS = Object.freeze({
   boss: BOSS_SOLO_SCENARIO,
   test: TEST_SOLO_SCENARIO,
   'dragon-warrior': DRAGON_WARRIOR_SCENARIO,
+  'mechanics-test': MECHANICS_TEST_SCENARIO,
 });
 const SOLO_PROGRESS_STORAGE_KEY = 'clawteam-lan-hearthstone-solo-progress-v2';
 const PVP_PROGRESS_STORAGE_KEY = 'clawteam-lan-hearthstone-pvp-progress-v2';
@@ -569,10 +596,8 @@ const elements = {
   handCards: document.getElementById('hand-cards'),
   deckStack: document.getElementById('deck-stack'),
   deckCount: document.getElementById('deck-count'),
-  enemyHandZone: document.getElementById('enemy-hand-zone'),
-  enemyHandCards: document.getElementById('enemy-hand-cards'),
-  enemyHandCountHint: document.getElementById('enemy-hand-count-hint'),
   enemyDeckStack: document.getElementById('enemy-deck-stack'),
+  enemyHandCountHint: document.getElementById('enemy-hand-count-hint'),
   enemyDeckCount: document.getElementById('enemy-deck-count'),
   playerWeapon: document.getElementById('player-weapon'),
   playerWeaponAtk: document.querySelector('#player-weapon .weapon-slot__attack'),
@@ -719,6 +744,18 @@ function isQuestlineCard(card) {
 }
 
 function buildDeck() {
+  const scenario = getSoloScenario();
+  if (scenario.scenarioId === 'mechanics-test') {
+    const deck = [];
+    for (const entry of mechanicTestDeck) {
+      const card = effectiveCardById[entry.cardId];
+      if (!card) continue;
+      for (let i = 0; i < (entry.count || 1); i++) {
+        deck.push({ ...card, instanceId: uid(`mt-${card.id}-${i}`) });
+      }
+    }
+    return shuffle(deck);
+  }
   const questCards = [];
   const normalCards = [];
   for (const base of effectiveCards) {
@@ -1339,6 +1376,9 @@ function initSoloState() {
       questline: null,
       redirectSelfDamage: false,
       delayedDamage: [],
+      cardsPlayedThisTurn: [],
+      spellsPlayedThisTurn: [],
+      minionsDiedThisTurn: [],
       deadFriendlyMinions: [],
     },
   };
@@ -1353,25 +1393,9 @@ function initSoloState() {
     for (let i = 0; i < 4; i++) {
       if (bossDeck.length) bossHand.push(bossDeck.pop());
     }
-    // 起手调度 — 换掉的牌洗回，但保留整体最优排序
-    const mulliganResult = mulliganDragonWarrior(bossHand, false, 'tempo');
-    if (mulliganResult.mulligan.length > 0) {
-      const toShuffle = mulliganResult.mulligan;
-      for (const c of toShuffle) {
-        const idx = bossHand.findIndex(h => h.instanceId === c.instanceId);
-        if (idx >= 0) bossHand.splice(idx, 1);
-      }
-      // 换掉的牌随机插回牌库（不破坏整体顺序）
-      for (const c of toShuffle) {
-        const pos = Math.floor(Math.random() * bossDeck.length);
-        bossDeck.splice(pos, 0, c);
-      }
-      // 重抽等量
-      for (let i = 0; i < toShuffle.length && bossDeck.length > 0; i++) {
-        bossHand.push(bossDeck.pop());
-      }
-      pushSoloLog(`${scenario.boss.name} 调度了 ${toShuffle.length} 张牌。`);
-    }
+    // 固定牌序模式：跳过调度，保持教学曲线
+    // 期望起手: 载蛋雏龙、黑暗龙骑士、龙巢守护者、晦鳞巢母
+    pushSoloLog(`${scenario.boss.name} 以固定教学牌序开始对局。`);
     state.solo.boss = {
       heroName: scenario.boss.name,
       health: scenario.boss.heroHealth,
@@ -1416,41 +1440,56 @@ function initSoloState() {
   }
 }
 
-// 龙战 boss 牌序优先级 — 越高越早抽到（pop 从末尾取，所以权重高的排末尾）
-const DW_CARD_ORDER = {
-  'dw-grommash': 1,                 // 8费 格罗玛什 — 最后抽到
-  'dw-eternal-pain': 2,             // 1费 永时困苦
-  'dw-crimson-abyss': 3,            // 1费 赤红深渊
-  'dw-searing-flame': 4,            // 1费 烈火炙烤
-  'dw-field-announcer': 8,          // 4费 现场播报员
-  'dw-erupting-volcano': 10,        // 3费 喷发火山
-  'dw-windrider-dragon': 12,        // 8→5费 乘风浮龙
-  'dw-prescient-whelp': 14,         // 7→4费 先觉蜿变幼龙
-  'dw-dark-scale-matron': 16,       // 3费 晦鳞巢母
-  'dw-scorching-fissure': 18,       // 2费 灼热裂隙
-  'dw-preemptive-strike': 19,       // 2费 先行打击
-  'dw-shadow-flame-infusion': 20,   // 2费 影焰晕染
-  'dw-flower-vendor': 22,           // 2费 鲜花商贩
-  'dw-dragon-nest-guardian': 24,    // 2费 龙巢守护者
-  'dw-dark-dragon-knight': 26,      // 1费 黑暗的龙骑士
-  'dw-egg-carrier': 28,             // 1费 载蛋雏龙 — 最先抽到
-};
+// 龙战高手固定抽牌顺序 — 精确到每张牌（含2张副本时的区分）
+// 数值越高 → 排越后面 → pop() 越先抽到
+const DW_DRAW_ORDER = [
+  // 起手4张 (pop顺序: 29→28→27→26)
+  'dw-egg-carrier',           // 1st draw → 起手
+  'dw-dark-dragon-knight',    // 2nd draw → 起手
+  'dw-dragon-nest-guardian',  // 3rd draw → 起手
+  'dw-dark-scale-matron',     // 4th draw → 起手
+  // Turn 1-4 抽牌 (pop: 25→24→23→22)
+  'dw-flower-vendor',         // T1
+  'dw-windrider-dragon',      // T2 ★ 乘风浮龙进手
+  'dw-shadow-flame-infusion', // T3
+  'dw-prescient-whelp',       // T4 ★ 先觉蜿变幼龙进手
+  // Turn 5+ 抽牌 (pop: 21→20→...)
+  'dw-egg-carrier',           // T5 第二张载蛋雏龙
+  'dw-dark-dragon-knight',    // T6 第二张黑暗龙骑士
+  'dw-dragon-nest-guardian',  // T7 第二张龙巢守护者
+  'dw-dark-scale-matron',     // T8 第二张晦鳞巢母
+  'dw-scorching-fissure',     // T9
+  'dw-preemptive-strike',     // T10
+  'dw-windrider-dragon',      // T11 第二张乘风浮龙
+  'dw-flower-vendor',         // T12 第二张鲜花商贩
+  'dw-shadow-flame-infusion', // T13
+  'dw-prescient-whelp',       // T14 第二张先觉幼龙
+  'dw-scorching-fissure',     // T15
+  'dw-preemptive-strike',     // T16
+  'dw-erupting-volcano',      // T17
+  'dw-erupting-volcano',      // T18
+  'dw-field-announcer',       // T19
+  'dw-field-announcer',       // T20
+  'dw-searing-flame',         // T21
+  'dw-searing-flame',         // T22
+  'dw-crimson-abyss',         // T23
+  'dw-crimson-abyss',         // T24
+  'dw-eternal-pain',          // T25
+  'dw-grommash',              // T26 — 最后抽到
+];
 
 function buildDragonWarriorBossDeck() {
+  // 按 DW_DRAW_ORDER 顺序构建牌库，index 0 = 最后抽，index 29 = 最先抽
   const deck = [];
-  for (const entry of dragonWarriorDeck) {
-    const card = effectiveCardById[entry.cardId];
+  const usedCount = {};
+  for (const cardId of DW_DRAW_ORDER) {
+    const card = effectiveCardById[cardId];
     if (!card) continue;
-    for (let i = 0; i < (entry.count || 1); i++) {
-      deck.push({ ...card, instanceId: uid(`dw-card-${card.id}`) });
-    }
+    usedCount[cardId] = (usedCount[cardId] || 0) + 1;
+    deck.push({ ...card, instanceId: uid(`dw-${cardId}-${usedCount[cardId]}`) });
   }
-  // 按预设权重排序，高权重排末尾 → pop() 先抽到
-  deck.sort((a, b) => {
-    const wa = DW_CARD_ORDER[a.id] ?? 15;
-    const wb = DW_CARD_ORDER[b.id] ?? 15;
-    return wa - wb;
-  });
+  // DW_DRAW_ORDER[0]=最先抽 → 反转后 push 顺序变成 pop 顺序
+  deck.reverse();
   return deck;
 }
 
@@ -2378,13 +2417,13 @@ function getEffectiveCardCostSolo(card) {
 
 function addCardToSoloHand(cardId, options = {}) {
   const source = effectiveCardById[cardId];
-  if (!source || state.solo.player.hand.length >= 10) return false;
-  state.solo.player.hand.push({
+  if (!source) return false;
+  const inst = {
     ...cloneValue(source),
     instanceId: uid(`card-${source.id}`),
     temporary: options.temporary === true,
-  });
-  return true;
+  };
+  return addCardInstanceToHand(inst, 'player');
 }
 
 function advanceQuestlineSolo(amount) {
@@ -2471,9 +2510,10 @@ function drawCards(amount) {
   newlyDrawnCardIds.clear();
   while (drawn < amount && state.solo.player.deck.length && state.solo.player.hand.length < 10) {
     const nextCard = state.solo.player.deck.shift();
-    state.solo.player.hand.push(nextCard);
-    newlyDrawnCardIds.add(nextCard.instanceId);
-    drawn += 1;
+    if (addCardInstanceToHand(nextCard, 'player')) {
+      newlyDrawnCardIds.add(nextCard.instanceId);
+      drawn += 1;
+    }
   }
   return drawn;
 }
@@ -2868,7 +2908,7 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       const sourceIndex = state.solo.player.deck.findIndex((card) => !effect.excludeSelf || card.id !== context.sourceCard?.id);
       if (sourceIndex >= 0 && state.solo.player.hand.length < 10) {
         const [discovered] = state.solo.player.deck.splice(sourceIndex, 1);
-        state.solo.player.hand.push({ ...discovered, temporary: effect.temporary === true });
+        addCardInstanceToHand({ ...discovered, temporary: effect.temporary === true }, 'player');
         pushSoloLog(`你从牌库中发现了 ${discovered.name}${effect.temporary ? '（临时）' : ''}。`);
       }
       continue;
@@ -3037,7 +3077,7 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       const options = generateDiscoverOptions(pool, 3);
       const best = pickBestDiscover(options, state, actorSide);
       if (best) {
-        hero.hand.push(best);
+        addCardInstanceToHand(best, actorSide);
         pushSoloLog(`${hero.heroName} 从3个龙中选择了 ${best.displayName}（攻${best.attack}/血${best.health}）。`);
       }
       continue;
@@ -3051,7 +3091,7 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       const options = generateDiscoverOptions(pool, 3);
       const best = pickBestDiscover(options, state, actorSide);
       if (best) {
-        hero.hand.push(best);
+        addCardInstanceToHand(best, actorSide);
         pushSoloLog(`${hero.heroName} 从3个战士随从中选择了 ${best.displayName}（攻${best.attack}/血${best.health}）。`);
       }
       continue;
@@ -3169,7 +3209,7 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
             cost: 1,
             effects: [{ type: 'overflowDamage', target: 'playerChoice', targetKinds: ['minion'], targetCondition: 'damaged', amount: overflow }],
           };
-          hero.hand.push(searingCopy);
+          addCardInstanceToHand(searingCopy, actorSide);
           pushSoloLog(`烈火炙烤溢出 ${overflow} 点伤害，回手一张新牌。`);
         }
       }
@@ -3187,7 +3227,7 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       );
       if (poolCards.length > 0) {
         const pick = poolCards[Math.floor(Math.random() * poolCards.length)];
-        hero.hand.push({ ...pick, instanceId: uid(`random-${pick.id}`) });
+        addCardInstanceToHand({ ...pick, instanceId: uid(`random-${pick.id}`) }, actorSide);
         pushSoloLog(`${hero.heroName} 随机获得了一张 ${pick.name}。`);
       }
       continue;
@@ -3199,8 +3239,8 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       for (let i = hero.deck.length - 1; i >= 0; i--) {
         if (hero.deck[i].type === 'minion') {
           const [drawn] = hero.deck.splice(i, 1);
-          if (hero.hand.length < 10) hero.hand.push(drawn);
-          pushSoloLog(`${hero.heroName} 抽了一张随从牌：${drawn.name}。`);
+          if (addCardInstanceToHand(drawn, actorSide))
+            pushSoloLog(`${hero.heroName} 抽了一张随从牌：${drawn.name}。`);
           break;
         }
       }
@@ -3230,7 +3270,7 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       if (targetEntity.health > 0) {
         // 存活：抽牌
         if (hero.deck && hero.deck.length && hero.hand && hero.hand.length < 10) {
-          hero.hand.push(hero.deck.pop());
+          addCardInstanceToHand(hero.deck.pop(), 'player');
           pushSoloLog(`永时困苦：目标存活，${hero.heroName} 抽了一张牌。`);
         }
       } else {
@@ -3320,6 +3360,18 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       continue;
     }
 
+    if (effect.type === 'buffSelf') {
+      const source = context.sourceCard;
+      if (source) {
+        source.attack = (source.attack || 0) + (Number(effect.attack) || 0);
+        source.health = (source.health || 0) + (Number(effect.health) || 0);
+        if (!source.maxHealth) source.maxHealth = source.health;
+        else source.maxHealth += (Number(effect.health) || 0);
+        pushSoloLog(`${source.name} 获得 +${effect.attack || 0}/+${effect.health || 0}。`);
+      }
+      continue;
+    }
+
     if (effect.type === 'buff' && effect.target === 'friendlyMinions') {
       const side = actorSide === 'player' ? 'player' : 'boss';
       for (const minion of state.solo[side].board) {
@@ -3337,12 +3389,8 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       context.primaryTarget = context.primaryTarget || targetRef;
       context.primaryTargets.draw = context.primaryTargets.draw || targetRef;
       if (targetRef.side === 'player' && actorSide === 'player') {
-        const handCountBefore = state.solo.player.hand.length;
-        const drawn = drawCardsSolo(Number(effect.amount) || 0);
-        if (effect.temporary && drawn > 0) {
-          state.solo.player.hand.slice(handCountBefore).forEach((card) => { card.temporary = true; });
-        }
-        pushSoloLog(`你抽了 ${drawn} 张牌。`);
+        const count = drawCardsSolo(Number(effect.amount) || 0);
+        if (count) pushSoloLog(`你抽了 ${count} 张牌。`);
       }
     }
   }
@@ -3374,18 +3422,56 @@ function drawCardsSolo(amount) {
   let drawn = 0;
   while (drawn < amount && state.solo.player.deck.length && state.solo.player.hand.length < 10) {
     const nextCard = state.solo.player.deck.shift();
-    state.solo.player.hand.push(nextCard);
-    newlyDrawnCardIds.add(nextCard.instanceId);
-    drawn += 1;
+    if (addCardInstanceToHand(nextCard, 'player')) {
+      newlyDrawnCardIds.add(nextCard.instanceId);
+      drawn += 1;
+    }
   }
   return drawn;
 }
 
 function resolveCardSolo(cardInstance, chosenDamageTarget = null) {
   const effectiveCost = getEffectiveCardCostSolo(cardInstance);
+
+  // ── 机制检测（卡牌离开手牌前） ──────────────────────────
+  const evalResult = evaluateCardPlayState(cardInstance, 'player', state, {
+    hand: state.solo.player.hand,
+    currentTurn: state.solo.turn,
+    currentMana: state.solo.player.mana,
+    maxMana: state.solo.player.maxMana,
+    phase: state.solo.phase,
+    busy: state.solo.busy,
+    gameOver: isSoloGameOver(),
+    maxBoardSize: getSoloScenario().player?.maxBoardSize || 7,
+    boardSize: state.solo.player.board.length,
+    runtime: state.solo.player.runtime || { cardsPlayedThisTurn: [] },
+    effectiveCost,
+  });
+  const triggeredMechanics = [...evalResult.activeMechanics];
+
   state.solo.player.mana -= effectiveCost;
   state.solo.player.hand = state.solo.player.hand.filter((card) => card.instanceId !== cardInstance.instanceId);
   clearPendingSpellSolo();
+
+  // 机制日志
+  for (const mech of triggeredMechanics) {
+    if (mech === 'quickdraw') pushSoloLog(`快枪触发：${cardInstance.name}`);
+    else if (mech === 'combo') pushSoloLog(`连击触发：${cardInstance.name}`);
+    else if (mech === 'outcast') pushSoloLog(`流放触发：${cardInstance.name}`);
+    else if (mech === 'finale') pushSoloLog(`压轴触发：${cardInstance.name}`);
+    else if (mech === 'manathirst') pushSoloLog(`法力渴求触发：${cardInstance.name}`);
+  }
+
+  // ── 执行机制效果 ────────────────────────────────────────
+  executeMechanicEffects(cardInstance, triggeredMechanics, chosenDamageTarget);
+
+  // ── 记录出牌（结算完成后） ──────────────────────────────
+  const rt = ensureSoloRuntime('player');
+  if (rt) {
+    const entry = { instanceId: cardInstance.instanceId, type: cardInstance.type, spellSchool: cardInstance.spellSchool || null, tribes: cardInstance.tribes || [], sourceId: cardInstance.id };
+    rt.cardsPlayedThisTurn = [...(rt.cardsPlayedThisTurn || []), entry];
+    if (cardInstance.type === 'spell') rt.spellsPlayedThisTurn = [...(rt.spellsPlayedThisTurn || []), cardInstance.instanceId];
+  }
   animator?.pulseStat?.(elements.playerMana);
 
   if (cardInstance.type === 'minion') {
@@ -3422,6 +3508,33 @@ function resolveCardSolo(cardInstance, chosenDamageTarget = null) {
   if (!checkSoloOutcome()) {
     renderSolo();
   }
+}
+
+// ── 机制效果执行 ──────────────────────────────────────────────
+function executeMechanicEffects(cardInstance, triggeredMechanics, chosenTarget) {
+  if (!triggeredMechanics || triggeredMechanics.length === 0) return;
+  const bonus = cardInstance.bonusMechanicEffects;
+  if (!bonus) return;
+  for (const mech of triggeredMechanics) {
+    const effects = bonus[mech];
+    if (effects && Array.isArray(effects) && effects.length > 0) {
+      applyEffectsSolo(effects, 'player', {
+        primaryTarget: null, primaryTargets: {}, chosenTarget: chosenTarget || null,
+        trigger: 'onPlay', sourceCard: cardInstance,
+      });
+    }
+  }
+}
+
+// ── 统一手牌进入追踪 ──────────────────────────────────────────
+function addCardInstanceToHand(card, side = 'player') {
+  if (!card) return false;
+  const hero = state.solo[side];
+  if (!hero.hand) return false;
+  if (hero.hand.length >= 10) return false;
+  markCardEnteredHand(card, state.solo.turn);
+  hero.hand.push(card);
+  return true;
 }
 
 // ── 可交易 ──────────────────────────────────────────────────
@@ -3728,6 +3841,9 @@ async function resolveEnemyTurnSolo() {
   runtime.selfDamageThisTurn = 0;
   runtime.damageTakenThisTurn = 0;
   runtime.healthChangesThisTurn = 0;
+  runtime.cardsPlayedThisTurn = [];
+  runtime.spellsPlayedThisTurn = [];
+  runtime.minionsDiedThisTurn = [];
   for (const delayed of runtime.delayedDamage) {
     if (delayed.turnsRemaining <= 0) continue;
     applySelfDamageSolo('player', delayed.amount);
@@ -3837,6 +3953,138 @@ function restoreBossSnapshot(boss, snap) {
   boss.heroPowerUsed = snap.heroPowerUsed;
 }
 
+// ── Boss 动作执行 ──────────────────────────────────────────────
+async function executeBossAction(action, boss, bossHeroPower) {
+  switch (action.type) {
+    case 'play': {
+      const card = boss.hand.find(c => c.instanceId === action.card?.instanceId);
+      if (!card) break;
+      let cost = card.cost;
+      if (card.costModifier) {
+        const mod = card.costModifier;
+        if (mod.rule === 'holdingAnotherDragon') {
+          if (boss.hand.some(c => c.instanceId !== card.instanceId && (c.tribes || []).includes('dragon')))
+            cost = Math.max(mod.minimum || 0, cost - (mod.amount || 0));
+        } else if (mod.rule === 'kindredDragon') {
+          if ((boss.tribesPlayedLastTurn || []).includes('dragon'))
+            cost = Math.max(mod.minimum || 0, cost - (mod.amount || 0));
+        }
+      }
+      if (boss.mana < cost) break;
+      boss.mana -= cost;
+      boss.hand = boss.hand.filter(c => c.instanceId !== card.instanceId);
+      if ((card.tribes || []).includes('dragon')) boss.tribesPlayedThisTurn.push('dragon');
+      if (card.spellSchool === 'fire') boss.playedFireSpellThisTurn = true;
+      if (card.spellSchool) boss.spellSchoolsPlayedThisTurn.push(card.spellSchool);
+
+      if (card.type === 'location') {
+        boss.locations.push({
+          instanceId: uid(`loc-${card.id}`), sourceId: card.id, name: card.name,
+          durability: card.durability || 3, maxDurability: card.durability || 3,
+          effects: card.effects || [], usedThisTurn: false,
+        });
+        pushSoloLog(`${boss.heroName} 打出了地标 ${card.name}（${card.durability || 3} 耐久）。`);
+      } else if (card.type === 'minion') {
+        boss.board.push({
+          ...card, side: 'boss', maxHealth: card.health,
+          sleeping: !(card.keywords || []).includes('charge'),
+          canAttack: (card.keywords || []).includes('charge') || (card.keywords || []).includes('rush'),
+          rushOnly: (card.keywords || []).includes('rush'), divineShield: false,
+        });
+        pushSoloLog(`${boss.heroName} 打出了 ${card.name}。`);
+        applyEffectsSolo(card.effects.filter(e => e.trigger === 'battlecry' || !e.trigger), 'boss', {
+          primaryTarget: null, primaryTargets: {}, chosenTarget: action.target,
+          trigger: 'battlecry', sourceCard: card,
+        });
+      } else {
+        pushSoloLog(`${boss.heroName} 施放了 ${card.name}。`);
+        applyEffectsSolo(card.effects, 'boss', {
+          primaryTarget: null, primaryTargets: {}, chosenTarget: action.target,
+          trigger: 'onPlay', sourceCard: card,
+        });
+      }
+      break;
+    }
+    case 'attack': {
+      // AI 返回的 attacker 来自 clone，必须找到真实 boss 随从
+      const realAttacker = boss.board.find(m => m.instanceId === action.attacker?.instanceId);
+      if (!realAttacker || !realAttacker.canAttack) break;
+      if (action.target === 'face') {
+        const atk = realAttacker.attack;
+        dealDamage(state.solo.player, atk);
+        consumeMinionAttack(realAttacker);
+        pushSoloLog(`${realAttacker.name} 攻击了你的英雄，造成 ${atk} 点伤害。`);
+      } else {
+        const realDefender = state.solo.player.board.find(m => m.instanceId === action.target?.instanceId);
+        if (realDefender && realDefender.health > 0) {
+          resolveMinionCombatSolo(realAttacker, 'boss', 'player', realDefender.instanceId);
+        }
+      }
+      break;
+    }
+    case 'heroAttack': {
+      if (boss.heroAttackUsedThisTurn) break;
+      const heroAtk = Math.max(boss.heroAttackThisTurn || 0, boss.weapon?.attack || 0);
+      if (heroAtk <= 0) break;
+      if (action.target === 'face') {
+        dealDamage(state.solo.player, heroAtk);
+        boss.heroAttackUsedThisTurn = true;
+        animateWeaponSwing('enemy');
+        if (boss.weapon) { boss.weapon.durability--; if (boss.weapon.durability <= 0) boss.weapon = null; }
+        pushSoloLog(`${boss.heroName} 用武器攻击了你的英雄，造成 ${heroAtk} 点伤害。`);
+      }
+      break;
+    }
+    case 'heroPower': {
+      if (!bossHeroPower || boss.heroPowerUsed || boss.mana < (bossHeroPower.cost || 2)) break;
+      boss.mana -= (bossHeroPower.cost || 2);
+      boss.heroPowerUsed = true;
+      pushSoloLog(`${boss.heroName} 使用了英雄技能：${bossHeroPower.name}。`);
+      applyEffectsSolo(bossHeroPower.effects, 'boss', {
+        primaryTarget: null, primaryTargets: {}, chosenTarget: null,
+        trigger: 'onPlay', sourceCard: null,
+      });
+      break;
+    }
+    case 'location': {
+      const realLoc = boss.locations.find(l => l.instanceId === action.location?.instanceId);
+      if (!realLoc || realLoc.durability <= 0 || realLoc.usedThisTurn) break;
+      if (realLoc.sourceId === 'dw-crimson-abyss') {
+        const realTarget = boss.board.find(m => m.instanceId === action.target?.instanceId);
+        if (!realTarget || realTarget.health <= 0) break;
+        dealMinionDamageSolo(null, 'boss', realTarget, 1);
+        realTarget.attack = (realTarget.attack || 0) + 2;
+        pushSoloLog(`赤红深渊：对 ${realTarget.name} 造成1点伤害，攻击力+2。`);
+        processSoloDeaths('boss');
+      } else if (realLoc.sourceId === 'dw-erupting-volcano') {
+        const fireActive = boss.playedFireSpellThisTurn;
+        const perShot = fireActive ? 6 : 3;
+        const targets = [{ kind: 'hero', entity: state.solo.player }];
+        for (const m of state.solo.player.board) targets.push({ kind: 'minion', entity: m });
+        let remaining = perShot;
+        while (remaining > 0 && targets.length > 0) {
+          const idx = Math.floor(Math.random() * targets.length);
+          const t = targets[idx];
+          const hit = Math.min(remaining, t.entity.health || 99);
+          if (t.kind === 'hero') dealDamage(t.entity, hit);
+          else dealMinionDamageSolo(null, 'boss', t.entity, hit);
+          remaining -= hit;
+          if (t.entity.health <= 0) targets.splice(idx, 1);
+        }
+        pushSoloLog(`喷发火山：随机对敌方造成 ${perShot} 点伤害${fireActive ? '（火焰强化）' : ''}。`);
+        processSoloDeaths('player');
+      }
+      realLoc.durability--;
+      realLoc.usedThisTurn = true;
+      if (realLoc.durability <= 0) {
+        boss.locations = boss.locations.filter(l => l.instanceId !== realLoc.instanceId);
+        pushSoloLog(`${realLoc.name} 耐久耗尽，已移除。`);
+      }
+      break;
+    }
+  }
+}
+
 // ── 龙战 AI Boss 回合 ──────────────────────────────────────────
 async function resolveDragonWarriorBossTurn() {
   const boss = state.solo.boss;
@@ -3846,8 +4094,7 @@ async function resolveDragonWarriorBossTurn() {
   boss.mana = boss.maxMana;
   if (boss.deck.length && boss.hand.length < 10) {
     const drawn = boss.deck.pop();
-    boss.hand.push(drawn);
-    _enemyNewlyDrawn.add(drawn.instanceId);
+    addCardInstanceToHand(drawn, 'boss');
   }
   wakeBoard('boss');
   renderSolo();
@@ -3856,179 +4103,61 @@ async function resolveDragonWarriorBossTurn() {
   // 重置地标冷却
   for (const loc of boss.locations) loc.usedThisTurn = false;
 
-  // AI 决策 — 逐动作规划
-  const plan = decideDragonWarriorTurn(state, 'player', 'boss', getSoloScenario().boss?.heroPower || null);
-  if (!plan || plan.length === 0) return;
+  // AI 决策 — 每次请求单个动作，执行后重新评估
+  const bossHeroPower = getSoloScenario().boss?.heroPower || null;
+  const MAX_ACTIONS = 25;
 
-  // 输出 AI 候选推理
-  if (plan.length > 0 && plan[0]._candidates) {
-    const top = plan[0]._candidates;
-    pushSoloLog(`AI 候选: ${top.map(c=>`${c.action}[${c.score}]`).join(' | ')}`);
-  }
+  let prevKey = '';
+  let stuckCount = 0;
 
-  for (const action of plan) {
+  for (let step = 0; step < MAX_ACTIONS; step++) {
     if (checkSoloOutcome()) return;
 
+    const action = decideDragonWarriorAction(state, 'player', 'boss', bossHeroPower);
+    if (!action) break;
+
+    // 输出候选
+    if (action._candidates && action._candidates.length > 0) {
+      pushSoloLog(`AI 候选: ${action._candidates.map(c=>`${c.action}[${c.score}]`).join(' | ')}`);
+    }
+
     if (action.type === 'endTurn') break;
-    if (!action.type) continue;
 
-    switch (action.type) {
-      case 'play': {
-        const card = action.card;
-        if (!card) break;
-        // 计算 boss 卡牌的实际费用（含减费）
-        let cost = card.cost;
-        if (card.costModifier) {
-          const mod = card.costModifier;
-          if (mod.rule === 'holdingAnotherDragon') {
-            const hasOther = boss.hand.some(c => c.instanceId !== card.instanceId && (c.tribes || []).includes('dragon'));
-            if (hasOther) cost = Math.max(mod.minimum || 0, cost - (mod.amount || 0));
-          } else if (mod.rule === 'kindredDragon') {
-            if ((boss.tribesPlayedLastTurn || []).includes('dragon')) {
-              cost = Math.max(mod.minimum || 0, cost - (mod.amount || 0));
-            }
-          }
-        }
-        if (boss.mana < cost) break;
+    // 斩杀序列
+    if (action.type === 'lethal') {
+      for (const la of (action.plan || [])) {
+        if (checkSoloOutcome()) return;
+        await executeBossAction(la, boss, bossHeroPower);
+        renderSolo();
+        await sleepSolo(200);
+      }
+      break;
+    }
 
-        boss.mana -= cost;
-        boss.hand = boss.hand.filter(c => c.instanceId !== card.instanceId);
-
-        // 追踪龙/法术打出
-        if ((card.tribes || []).includes('dragon')) {
-          boss.tribesPlayedThisTurn.push('dragon');
-        }
-        if (card.spellSchool) {
-          boss.spellSchoolsPlayedThisTurn.push(card.spellSchool);
-          if (card.spellSchool === 'fire') boss.playedFireSpellThisTurn = true;
-        }
-
-        if (card.type === 'location') {
-          const loc = {
-            instanceId: uid(`loc-${card.id}`),
-            sourceId: card.id,
-            name: card.name,
-            durability: card.durability || 3,
-            maxDurability: card.durability || 3,
-            effects: card.effects || [],
-            usedThisTurn: false,
-          };
-          boss.locations.push(loc);
-          pushSoloLog(`${boss.heroName} 打出了地标 ${card.name}（${loc.durability} 耐久）。`);
-        } else if (card.type === 'minion') {
-          boss.board.push({
-            ...card,
-            side: 'boss',
-            maxHealth: card.health,
-            sleeping: !(card.keywords || []).includes('charge'),
-            canAttack: (card.keywords || []).includes('charge') || (card.keywords || []).includes('rush'),
-            rushOnly: (card.keywords || []).includes('rush'),
-            divineShield: false,
-          });
-          pushSoloLog(`${boss.heroName} 打出了 ${card.name}。`);
-          // 战吼效果
-          applyEffectsSolo(card.effects.filter(e => e.trigger === 'battlecry' || !e.trigger), 'boss', {
-            primaryTarget: null, primaryTargets: {},
-            chosenTarget: action.target, trigger: 'battlecry', sourceCard: card,
-          });
-        } else {
-          pushSoloLog(`${boss.heroName} 施放了 ${card.name}。`);
-          applyEffectsSolo(card.effects, 'boss', {
-            primaryTarget: null, primaryTargets: {},
-            chosenTarget: action.target, trigger: 'onPlay', sourceCard: card,
-          });
-        }
+    // 防卡死：同一动作连续出现3次 → 跳过
+    const actionKey = `${action.type}|${action.card?.instanceId || action.attacker?.instanceId || action.location?.instanceId || ''}|${action.target === 'face' ? 'face' : (action.target?.instanceId || '')}`;
+    if (actionKey === prevKey) {
+      stuckCount++;
+      if (stuckCount >= 3) {
+        pushSoloLog(`AI 卡死在 ${describeAction(action)}，强制结束回合。`);
         break;
       }
+    } else {
+      stuckCount = 0;
+    }
+    prevKey = actionKey;
 
-      case 'attack': {
-        if (!action.attacker || !action.attacker.canAttack) break;
-        if (action.target === 'face') {
-          const atk = action.attacker.attack;
-          dealDamage(state.solo.player, atk);
-          consumeMinionAttack(action.attacker);
-          pushSoloLog(`${action.attacker.name} 攻击了你的英雄，造成 ${atk} 点伤害。`);
-        } else if (action.target?.health > 0) {
-          resolveMinionCombatSolo(action.attacker, 'boss', 'player', action.target.instanceId);
-        }
-        break;
-      }
-
-      case 'heroAttack': {
-        if (boss.heroAttackUsedThisTurn) break;
-        const heroAtk = Math.max(boss.heroAttackThisTurn, (boss.weapon?.durability > 0 ? boss.weapon.attack : 0));
-        if (heroAtk <= 0) break;
-        if (action.target === 'face') {
-          dealDamage(state.solo.player, heroAtk);
-          boss.heroAttackUsedThisTurn = true;
-          animateWeaponSwing('enemy');
-          if (boss.weapon?.durability > 0) {
-            boss.weapon.durability--;
-            if (boss.weapon.durability <= 0) boss.weapon = null;
-          }
-          pushSoloLog(`${boss.heroName} 用武器攻击了你的英雄，造成 ${heroAtk} 点伤害。`);
-        }
-        break;
-      }
-
-      case 'heroPower': {
-        const power = getSoloScenario().boss?.heroPower;
-        if (!power || boss.heroPowerUsed || boss.mana < (power.cost || 2)) break;
-        boss.mana -= (power.cost || 2);
-        boss.heroPowerUsed = true;
-        pushSoloLog(`${boss.heroName} 使用了英雄技能：${power.name}。`);
-        applyEffectsSolo(power.effects, 'boss', {
-          primaryTarget: null, primaryTargets: {}, chosenTarget: null,
-          trigger: 'onPlay', sourceCard: null,
-        });
-        break;
-      }
-
-      case 'location': {
-        const loc = action.location;
-        if (!loc || loc.durability <= 0 || loc.usedThisTurn) break;
-        // 执行地标效果
-        if (loc.sourceId === 'dw-crimson-abyss') {
-          const target = action.target;
-          if (!target || target.health <= 0) break;
-          dealMinionDamageSolo(null, 'boss', target, 1);
-          target.attack = (target.attack || 0) + 2;
-          pushSoloLog(`赤红深渊：对 ${target.name} 造成1点伤害，攻击力+2。`);
-          processSoloDeaths(target.side || 'boss');
-        } else if (loc.sourceId === 'dw-erupting-volcano') {
-          const fireActive = boss.playedFireSpellThisTurn;
-          const perShot = fireActive ? 6 : 3;
-          const targets = [];
-          targets.push({ kind: 'hero', entity: state.solo.player });
-          for (const m of state.solo.player.board) targets.push({ kind: 'minion', entity: m });
-          let remaining = perShot;
-          while (remaining > 0 && targets.length > 0) {
-            const idx = Math.floor(Math.random() * targets.length);
-            const t = targets[idx];
-            const hit = Math.min(remaining, t.entity.health || 99);
-            if (t.kind === 'hero') dealDamage(t.entity, hit);
-            else dealMinionDamageSolo(null, 'boss', t.entity, hit);
-            remaining -= hit;
-            if (t.entity.health <= 0) targets.splice(idx, 1);
-          }
-          pushSoloLog(`喷发火山：随机对敌方造成 ${perShot} 点伤害${fireActive ? '（火焰强化）' : ''}。`);
-          processSoloDeaths('player');
-        }
-        loc.durability--;
-        loc.usedThisTurn = true;
-        if (loc.durability <= 0) {
-          boss.locations = boss.locations.filter(l => l.instanceId !== loc.instanceId);
-          pushSoloLog(`${loc.name} 耐久耗尽，已移除。`);
-        }
-        break;
-      }
-
-      case 'endTurn':
-        break;
+    const manaBefore = boss.mana;
+    const handBefore = boss.hand.length;
+    await executeBossAction(action, boss, bossHeroPower);
+    // 如果执行后状态没变，说明动作不合法（比如费用变了），跳过
+    if (boss.mana === manaBefore && boss.hand.length === handBefore && action.type === 'play') {
+      pushSoloLog(`跳过无效动作: ${describeAction(action)}`);
+      continue;
     }
 
     renderSolo();
-    await sleepSolo(250);
+    await sleepSolo(200);
   }
 
   // 回合结束：鲜花商贩 buff
@@ -4042,30 +4171,6 @@ async function resolveDragonWarriorBossTurn() {
       if (!target.maxHealth) target.maxHealth = target.health;
       else target.maxHealth += 1;
       pushSoloLog(`鲜花商贩使 ${target.name} 获得+1/+1。`);
-    }
-  }
-
-  // 回合结束：AI 未使用的剩余攻击 → 自动打脸
-  for (const minion of [...boss.board]) {
-    if (minion.canAttack && minion.health > 0 && !checkSoloOutcome()) {
-      dealDamage(state.solo.player, minion.attack);
-      consumeMinionAttack(minion);
-      pushSoloLog(`${minion.name} 攻击了你的英雄，造成 ${minion.attack} 点伤害。`);
-      renderSolo();
-      await sleepSolo(200);
-    }
-  }
-  // 英雄攻击（如果还有）
-  if (!boss.heroAttackUsedThisTurn) {
-    const heroAtk = Math.max(boss.heroAttackThisTurn || 0, boss.weapon?.attack || 0);
-    if (heroAtk > 0) {
-      dealDamage(state.solo.player, heroAtk);
-      boss.heroAttackUsedThisTurn = true;
-      animateWeaponSwing('enemy');
-      if (boss.weapon) { boss.weapon.durability--; if (boss.weapon.durability <= 0) boss.weapon = null; }
-      pushSoloLog(`${boss.heroName} 用剩余攻击打了你的英雄，造成 ${heroAtk} 点伤害。`);
-      renderSolo();
-      await sleepSolo(200);
     }
   }
 }
@@ -4306,104 +4411,29 @@ function animateWeaponSwing(side) {
   slot.addEventListener('animationend', () => slot.classList.remove('anim-weapon-swing'), { once: true });
 }
 
-// ── 敌方手牌渲染（龙战等 boss 专用） ──────────────────────────
-
-const _enemyHandDomIds = new Set();
-let _enemyNewlyDrawn = new Set();
+// ── 敌方手牌/牌库计数（龙战等 boss 专用） ──────────────────
 
 function renderEnemyHandSolo() {
-  const scenario = getSoloScenario();
-  const zone = elements.enemyHandZone;
-  const container = elements.enemyHandCards;
-  const deckEl = elements.enemyDeckStack;
-  const deckCountEl = elements.enemyDeckCount;
-  const hintEl = elements.enemyHandCountHint;
-  if (!zone || !container) return;
+  const row = document.getElementById('enemy-stats-row');
+  if (!row) return;
 
+  const scenario = getSoloScenario();
   const isDW = scenario.scenarioId === 'dragon-warrior';
   const boss = state.solo.boss;
   const hasHand = isDW && boss.hand !== undefined;
 
-  zone.style.display = hasHand ? '' : 'none';
+  row.style.display = hasHand ? '' : 'none';
   if (!hasHand) return;
 
-  const hand = boss.hand || [];
-  const handIds = new Set(hand.map(c => c.instanceId));
+  const handCount = (boss.hand || []).length;
+  const deckCount = (boss.deck || []).length;
 
-  // 更新牌库数量
-  if (deckEl && deckCountEl) {
-    const deckCount = (boss.deck || []).length;
-    deckCountEl.textContent = deckCount;
-    deckEl.classList.toggle('is-empty', deckCount === 0);
-    deckEl.style.display = '';
+  if (elements.enemyHandCountHint) elements.enemyHandCountHint.textContent = handCount;
+  if (elements.enemyDeckCount) elements.enemyDeckCount.textContent = deckCount;
+  if (elements.enemyDeckStack) {
+    elements.enemyDeckStack.classList.toggle('is-empty', deckCount === 0);
+    elements.enemyDeckStack.style.display = '';
   }
-  // 敌方手牌保持炉石式紧凑表现：这里只显示未知手牌数量。
-  if (hintEl) {
-    hintEl.textContent = `×${hand.length}`;
-    hintEl.setAttribute('aria-label', `敌方手牌 ${hand.length} 张`);
-  }
-
-  // 移除已打出的手牌
-  const existingIds = new Set();
-  for (const el of [...container.children]) {
-    const id = el.dataset?.enemyCardId;
-    if (id && !handIds.has(id)) {
-      el.remove();
-      _enemyHandDomIds.delete(id);
-    } else if (id) {
-      existingIds.add(id);
-    }
-  }
-
-  // 追加新抽的牌（增量）
-  let newCards = false;
-  for (const card of hand) {
-    if (!_enemyHandDomIds.has(card.instanceId)) {
-      const el = document.createElement('div');
-      el.className = 'enemy-hand-card';
-      el.dataset.enemyCardId = card.instanceId;
-      el.setAttribute('aria-label', '敌方手牌，背面朝上');
-      container.appendChild(el);
-      _enemyHandDomIds.add(card.instanceId);
-      _enemyNewlyDrawn.add(card.instanceId);
-      newCards = true;
-    }
-  }
-
-  // 抽牌动画
-  if (newCards) {
-    animateEnemyCardDraws();
-  }
-
-  // 牌库空时显示
-  if (deckEl) deckEl.style.display = boss.deck && boss.deck.length >= 0 ? '' : 'none';
-}
-
-function animateEnemyCardDraws() {
-  if (_enemyNewlyDrawn.size === 0) return;
-  const deckEl = elements.enemyDeckStack;
-  const deckRect = deckEl?.getBoundingClientRect();
-  let stagger = 0;
-  for (const cardId of _enemyNewlyDrawn) {
-    const cardEl = document.querySelector(`[data-enemy-card-id="${cardId}"]`);
-    if (cardEl && deckRect) {
-      const cardRect = cardEl.getBoundingClientRect();
-      const dx = deckRect.left - cardRect.left;
-      const dy = deckRect.top - cardRect.top;
-      cardEl.style.setProperty('--flip-from-x', `${dx}px`);
-      cardEl.style.setProperty('--flip-from-y', `${dy}px`);
-      cardEl.style.animationDelay = `${stagger}ms`;
-      cardEl.classList.add('anim-card-flip-in');
-      cardEl.addEventListener('animationend', () => {
-        cardEl.classList.remove('anim-card-flip-in');
-        cardEl.style.removeProperty('--flip-from-x');
-        cardEl.style.removeProperty('--flip-from-y');
-        cardEl.style.animationDelay = '';
-      }, { once: true });
-      stagger += 80;
-    }
-  }
-  _enemyNewlyDrawn.clear();
 }
 
 // ============================================
@@ -4743,8 +4773,28 @@ function isCardTradeable(card) {
 }
 
 function buildHandCardHTML(card) {
-  const playable = playerCanPlaySolo(card);
   const effectiveCost = getEffectiveCardCostSolo(card);
+  const evalResult = evaluateCardPlayState(card, 'player', state, {
+    hand: state.solo.player?.hand || [],
+    currentTurn: state.solo.turn,
+    currentMana: state.solo.player?.mana || 0,
+    maxMana: state.solo.player?.maxMana || 0,
+    phase: state.solo.phase,
+    busy: state.solo.busy,
+    gameOver: isSoloGameOver(),
+    maxBoardSize: getSoloScenario().player?.maxBoardSize || 7,
+    boardSize: (state.solo.player?.board || []).length,
+    runtime: state.solo.player?.runtime || { cardsPlayedThisTurn: [] },
+    needsTarget: cardNeedsExplicitTargetSolo(card),
+    availableTargets: state.solo.player.board.length + state.solo.boss.board.length,
+    requiresDeadFriendlyMinion: (card.effects || []).some(e => e.type === 'returnDeadFriendlyMinions'),
+    hasDeadFriendlyMinion: (state.solo.player?.runtime?.deadFriendlyMinions || []).length > 0,
+    minionOnlyTarget: cardOnlyTargetsMinionsSolo(card),
+    totalBoardMinions: state.solo.player.board.length + state.solo.boss.board.length,
+    effectiveCost,
+  });
+  const playable = evalResult.playable;
+  const visualState = evalResult.visualState;
   const pending = state.solo.pendingSpellId === card.instanceId;
   const textValue = resolveCardText(card);
   const effectText = textValue ? `<span class="game-card__text">${textValue}</span>` : '';
@@ -4767,7 +4817,7 @@ function buildHandCardHTML(card) {
   return `
     <button
       type="button"
-      class="game-card ${playable ? 'is-playable' : 'is-locked'} ${pending ? 'is-selected' : ''}"
+      class="game-card ${playable ? visualState : 'is-locked'} ${pending ? 'is-selected' : ''}"
       data-card-id="${card.instanceId}"
       ${playable ? '' : 'disabled'}
     >
@@ -4837,10 +4887,30 @@ function renderHandSolo() {
       // 已有 — 只更新费用和可玩状态
       const el = container.querySelector(`[data-card-id="${card.instanceId}"]`);
       if (el) {
-        const playable = playerCanPlaySolo(card);
         const cost = getEffectiveCardCostSolo(card);
+        const evalR = evaluateCardPlayState(card, 'player', state, {
+          hand: state.solo.player?.hand || [],
+          currentTurn: state.solo.turn,
+          currentMana: state.solo.player?.mana || 0,
+          maxMana: state.solo.player?.maxMana || 0,
+          phase: state.solo.phase,
+          busy: state.solo.busy,
+          gameOver: isSoloGameOver(),
+          maxBoardSize: getSoloScenario().player?.maxBoardSize || 7,
+          boardSize: (state.solo.player?.board || []).length,
+          runtime: state.solo.player?.runtime || { cardsPlayedThisTurn: [] },
+          needsTarget: cardNeedsExplicitTargetSolo(card),
+          availableTargets: state.solo.player.board.length + state.solo.boss.board.length,
+          requiresDeadFriendlyMinion: (card.effects || []).some(e => e.type === 'returnDeadFriendlyMinions'),
+          hasDeadFriendlyMinion: (state.solo.player?.runtime?.deadFriendlyMinions || []).length > 0,
+          minionOnlyTarget: cardOnlyTargetsMinionsSolo(card),
+          totalBoardMinions: state.solo.player.board.length + state.solo.boss.board.length,
+          effectiveCost: cost,
+        });
+        const playable = evalR.playable;
+        const visualState = evalR.visualState;
         const pending = state.solo.pendingSpellId === card.instanceId;
-        el.className = `game-card ${playable ? 'is-playable' : 'is-locked'} ${pending ? 'is-selected' : ''}`;
+        el.className = `game-card ${playable ? visualState : 'is-locked'} ${pending ? 'is-selected' : ''}`;
         if (playable) el.removeAttribute('disabled'); else el.setAttribute('disabled', '');
         const costEl = el.querySelector('.game-card__cost');
         if (costEl) costEl.textContent = cost;
@@ -4870,7 +4940,32 @@ function renderTipsSolo() {
 }
 
 function renderButtonsSolo() {
-  elements.endTurnButton.disabled = state.solo.phase !== 'player' || state.solo.busy || isSoloGameOver();
+  const canEnd = state.solo.phase === 'player' && !state.solo.busy && !isSoloGameOver();
+  elements.endTurnButton.disabled = !canEnd;
+
+  // 绿色：无可执行动作（所有随从已攻击 + 手牌无可用 + 英雄技能已用或不够费）
+  if (canEnd) {
+    const hasAttackers = state.solo.player.board.some(m => m.canAttack);
+    const hasPlayable = state.solo.player.hand.some(c => {
+      if (getEffectiveCardCostSolo(c) > state.solo.player.mana) return false;
+      if (c.type === 'minion' && state.solo.player.board.length >= getSoloScenario().player.maxBoardSize) return false;
+      if ((c.effects || []).some(e => e.type === 'returnDeadFriendlyMinions')) {
+        const rt = ensureSoloRuntime('player');
+        if (!rt?.deadFriendlyMinions?.length) return false;
+      }
+      if (cardOnlyTargetsMinionsSolo(c)) {
+        if (state.solo.player.board.length + state.solo.boss.board.length === 0) return false;
+      }
+      return true;
+    });
+    const heroPower = getSoloScenario().player?.heroPower;
+    const canHeroPower = heroPower && !state.solo.player.heroPowerUsed && state.solo.player.mana >= (heroPower.cost || 2);
+    const hasActions = hasAttackers || hasPlayable || canHeroPower;
+
+    elements.endTurnButton.classList.toggle('is-ready', !hasActions);
+  } else {
+    elements.endTurnButton.classList.remove('is-ready');
+  }
 }
 
 function renderPvp() {
@@ -5011,11 +5106,26 @@ function renderBoardPvP() {
 }
 
 function renderHandPvP() {
-  const isMyTurn = isMyTurn();
+  const myTurn = isMyTurn();
+  const pvpRuntime = state.pvp.player?.runtime || { cardsPlayedThisTurn: [] };
 
   elements.handCards.innerHTML = state.pvp.player.hand.map((card) => {
     const effectiveCost = getEffectiveCardCostPvp(card);
-    const playable = isMyTurn && effectiveCost <= state.pvp.player.mana;
+    const evalResult = evaluateCardPlayState(card, 'player', state, {
+      hand: state.pvp.player?.hand || [],
+      currentTurn: state.pvp.turn || 1,
+      currentMana: state.pvp.player?.mana || 0,
+      maxMana: state.pvp.player?.maxMana || 0,
+      phase: myTurn ? 'player' : 'enemy',
+      busy: state.busy || false,
+      gameOver: state.pvp.phase === 'ended',
+      maxBoardSize: 7,
+      boardSize: (state.pvp.player?.board || []).length,
+      runtime: pvpRuntime,
+      effectiveCost,
+    });
+    const playable = evalResult.playable;
+    const visualState = evalResult.visualState;
     const pending = state.pvp.pendingSpellId === card.instanceId;
     const textValue = resolveCardText(card);
     const effectText = textValue ? `<span class="game-card__text">${textValue}</span>` : '';
@@ -5034,7 +5144,7 @@ function renderHandPvP() {
     return `
       <button
         type="button"
-        class="game-card ${playable ? 'is-playable' : 'is-locked'} ${pending ? 'is-selected' : ''}"
+        class="game-card ${playable ? visualState : 'is-locked'} ${pending ? 'is-selected' : ''}"
         data-card-id="${card.instanceId}"
         ${playable ? '' : 'disabled'}
       >

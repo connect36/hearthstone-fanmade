@@ -438,64 +438,60 @@ function searchLethal(state, playerSide, bossSide, allActions) {
 // ================================================================
 // 主决策入口 — 逐动作重新规划
 // ================================================================
-export function decideDragonWarriorTurn(state, playerSide, bossSide, bossHeroPower) {
-  const plan = [];
-  const MAX_ACTIONS = 15;
+// 返回单个最佳动作（不修改真实 state，全部在 clone 上模拟）
+export function decideDragonWarriorAction(state, playerSide, bossSide, bossHeroPower) {
+  const workState = cloneState(state);
 
-  for (let step = 0; step < MAX_ACTIONS; step++) {
-    const b = state.solo[bossSide];
-    const p = state.solo[playerSide];
-    if (p.health <= 0 || b.health <= 0) break;
+  // 1. 生成合法动作
+  const actions = generateLegalActions(workState, playerSide, bossSide, bossHeroPower);
+  const nonEndTurn = actions.filter(a => a.type !== 'endTurn');
+  if (nonEndTurn.length === 0) return { type: 'endTurn', _candidates: [] };
 
-    // 1. 生成当前状态的合法动作
-    const actions = generateLegalActions(state, playerSide, bossSide, bossHeroPower);
-    if (actions.length <= 1) break; // only endTurn
-
-    // 2. 斩杀搜索
-    const lethalPlan = searchLethal(state, playerSide, bossSide, actions);
-    if (lethalPlan && lethalPlan.length > 0) {
-      plan.push(...lethalPlan);
-      break;
-    }
-
-    // 3. 模拟每个候选动作，选最优
-    let bestAction = null, bestScore = -Infinity;
-    const candidates = [];
-    const nonEndTurn = actions.filter(a => a.type !== 'endTurn');
-
-    for (const action of nonEndTurn) {
-      const sim = cloneState(state);
-      const ok = simulateAction(sim, action, bossSide, playerSide);
-      if (!ok) continue;
-      const score = evaluateState(sim, playerSide, bossSide);
-      candidates.push({action,score});
-      if (score > bestScore) { bestScore = score; bestAction = action; }
-    }
-
-    // 4. 输出前三个候选
-    candidates.sort((a,b)=>b.score-a.score);
-    const top3 = candidates.slice(0, 3).map(c => {
-      const desc = describeAction(c.action);
-      return {action:desc,score:c.score.toFixed(1)};
-    });
-
-    // 5. 如果最佳动作是 endTurn 或找不到，结束
-    if (!bestAction) break;
-
-    // 6. 执行最佳动作
-    plan.push({...bestAction, _score: bestScore, _candidates: top3});
-
-    // 真实执行 (app.js 侧会调用 applyRealAction)
-    // 这里只记录 plan，实际执行在 resolveDragonWarriorBossTurn
-    // 但我们需要更新 state 以便下一步模拟
-    const simReal = simulateAction(state, bestAction, bossSide, playerSide);
-    if (!simReal) break;
-
-    // 如果打出了返费牌，继续循环使用剩余法力
-    // 如果打出了抽牌/发现，手牌已变，继续循环
+  // 2. 斩杀搜索
+  const lethalPlan = searchLethal(workState, playerSide, bossSide, nonEndTurn);
+  if (lethalPlan && lethalPlan.length > 0) {
+    return { type: 'lethal', plan: lethalPlan, _candidates: [] };
   }
 
-  return plan;
+  // 3. 模拟每个候选，选最优
+  let bestAction = null, bestScore = -Infinity;
+  const candidates = [];
+
+  for (const action of nonEndTurn) {
+    const sim = cloneState(workState);
+    const ok = simulateAction(sim, action, bossSide, playerSide);
+    if (!ok) continue;
+    const score = evaluateState(sim, playerSide, bossSide);
+    candidates.push({ action, score });
+    if (score > bestScore) { bestScore = score; bestAction = action; }
+  }
+
+  // 4. 排序候选
+  candidates.sort((a, b) => b.score - a.score);
+  const top3 = candidates.slice(0, 3).map(c => ({
+    action: describeAction(c.action),
+    score: c.score.toFixed(1),
+  }));
+
+  if (!bestAction) return { type: 'endTurn', _candidates: top3 };
+
+  return { ...bestAction, _score: bestScore, _candidates: top3 };
+}
+
+// 兼容旧接口 — app.js 逐动作调用
+export function decideDragonWarriorTurn(state, playerSide, bossSide, bossHeroPower) {
+  const actions = [];
+  const MAX = 15;
+  // 注意：这个旧接口已弃用，新代码应使用 decideDragonWarriorAction + 循环
+  for (let i = 0; i < MAX; i++) {
+    const a = decideDragonWarriorAction(state, playerSide, bossSide, bossHeroPower);
+    if (!a || a.type === 'endTurn') break;
+    if (a.type === 'lethal') { actions.push(...a.plan); break; }
+    actions.push(a);
+    // 在真实 state 上模拟以推进循环（仅兼容用）
+    simulateAction(state, a, bossSide, playerSide);
+  }
+  return actions;
 }
 
 function describeAction(action) {

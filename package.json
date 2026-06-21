@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node server.mjs",
     "dev": "node server.mjs",
-    "test": "node scripts/verify-questline.mjs"
+    "test": "node --check public/app.js && node --check public/mechanics.js && node --check public/mechanic-conditions.js && node --check public/mechanic-runtime.js && node --check public/keywords.js && node --check public/editor.js && node --check public/editor-model.js && node scripts/verify-questline.mjs && node scripts/verify-mechanics.mjs && node scripts/verify-mechanics-integration.mjs && node scripts/verify-editor-model.mjs"
   },
   "dependencies": {
     "ws": "^8.21.0"
