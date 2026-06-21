@@ -796,7 +796,12 @@ button {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
   gap: 8px;
+}
+
+.hero-resources--player {
+  flex-wrap: nowrap;
 }
 
 .resource-pill {
@@ -812,9 +817,25 @@ button {
 }
 
 .resource-pill--health {
+  display: grid;
+  place-items: center;
+  width: 68px;
+  height: 68px;
+  min-width: 68px;
+  padding: 0;
+  border-radius: 50%;
   color: #ffd5d0;
-  background: rgba(229, 107, 95, 0.15);
-  border-color: rgba(229, 107, 95, 0.32);
+  font-size: 1.08rem;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 230, 217, 0.34), transparent 18%),
+    radial-gradient(circle at 50% 55%, #bd493f 0 42%, #72251f 68%, #32110f 100%);
+  border: 3px solid rgba(239, 175, 120, 0.68);
+  box-shadow:
+    inset 0 0 0 3px rgba(72, 18, 14, 0.58),
+    inset 0 -8px 15px rgba(45, 7, 5, 0.42),
+    0 5px 14px rgba(0, 0, 0, 0.35),
+    0 0 14px rgba(211, 75, 62, 0.2);
+  text-shadow: 0 2px 3px rgba(50, 0, 0, 0.8);
 }
 
 .resource-pill--armor {
@@ -870,9 +891,324 @@ button {
   animation: mana-temp-pulse 800ms ease-in-out infinite;
 }
 
+/* ===== 武器槽 ===== */
+
+.weapon-slot {
+  position: relative;
+  width: 44px;
+  height: 58px;
+  flex-shrink: 0;
+  border-radius: 6px;
+  background: linear-gradient(160deg, #5a3d2a, #2a1808);
+  border: 1.5px solid rgba(220, 170, 100, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 3px 10px rgba(0, 0, 0, 0.4);
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  place-items: center;
+  cursor: default;
+  user-select: none;
+  transition: transform 150ms ease, opacity 200ms ease;
+  /* 微微倾斜，像武器架 */
+  transform: rotate(-5deg);
+}
+
+.weapon-slot[data-side="enemy"] {
+  transform: rotate(5deg);
+}
+
+.weapon-slot__attack {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #f5d78c;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.6);
+  line-height: 1;
+}
+
+.weapon-slot__durability {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #c8b898;
+  opacity: 0.85;
+  line-height: 1;
+}
+
+.weapon-slot__name {
+  font-size: 0.55rem;
+  color: rgba(220, 190, 140, 0.7);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: -15px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* 装备动画 */
+@keyframes weapon-equip {
+  0% {
+    transform: translateX(40px) rotate(-25deg) scale(0.3);
+    opacity: 0;
+  }
+  60% {
+    transform: translateX(-4px) rotate(-8deg) scale(1.1);
+    opacity: 1;
+  }
+  80% {
+    transform: rotate(-3deg) scale(0.97);
+  }
+  100% {
+    transform: rotate(-5deg) scale(1);
+    opacity: 1;
+  }
+}
+
+.weapon-slot.anim-weapon-equip {
+  animation: weapon-equip 400ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* 攻击挥砍动画 */
+@keyframes weapon-swing {
+  0% {
+    transform: rotate(-5deg) translateX(0);
+  }
+  30% {
+    transform: rotate(-25deg) translateX(8px) translateY(-4px);
+  }
+  60% {
+    transform: rotate(10deg) translateX(20px);
+  }
+  100% {
+    transform: rotate(-5deg) translateX(0);
+  }
+}
+
+.weapon-slot.anim-weapon-swing {
+  animation: weapon-swing 350ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* 耐久耗尽破碎 */
+@keyframes weapon-break {
+  0% {
+    transform: rotate(-5deg) scale(1);
+    opacity: 1;
+    filter: brightness(1);
+  }
+  40% {
+    transform: rotate(-15deg) scale(1.1);
+    filter: brightness(1.5);
+  }
+  100% {
+    transform: rotate(30deg) scale(0.2);
+    opacity: 0;
+    filter: brightness(2) blur(2px);
+  }
+}
+
+.weapon-slot.anim-weapon-break {
+  animation: weapon-break 450ms ease-in forwards;
+}
+
 @keyframes mana-temp-pulse {
   0%, 100% { box-shadow: 0 0 6px rgba(100, 220, 100, 0.4); }
   50% { box-shadow: 0 0 14px rgba(100, 240, 100, 0.7); }
+}
+
+/* ===== 英雄技能按钮 ===== */
+
+.hero-power-btn {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  perspective: 600px;
+  -webkit-tap-highlight-color: transparent;
+  align-self: center;
+}
+
+.hero-power-btn:focus-visible {
+  outline: 2px solid rgba(200, 160, 240, 0.7);
+  outline-offset: 3px;
+}
+
+.hero-power-btn__inner {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transition: transform 420ms cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+}
+
+.hero-power-btn.is-used .hero-power-btn__inner {
+  transform: rotateY(180deg);
+}
+
+/* 正面：可用状态 */
+.hero-power-btn__front,
+.hero-power-btn__back {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.hero-power-btn__front {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(120, 60, 200, 0.5), transparent 62%),
+    radial-gradient(circle at 38% 34%, rgba(180, 140, 240, 0.45), transparent 52%),
+    conic-gradient(
+      from 0deg,
+      #2a1040, #3d1860, #2a1040, #4a2070,
+      #2a1040, #3d1860, #2a1040, #4a2070,
+      #2a1040, #3d1860, #2a1040, #4a2070,
+      #2a1040
+    );
+  border: 2.5px solid rgba(200, 160, 240, 0.4);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.08),
+    0 0 18px rgba(130, 70, 210, 0.3),
+    0 4px 20px rgba(0, 0, 0, 0.35);
+  transition:
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+
+.hero-power-btn:not(.is-used):not(:disabled):hover .hero-power-btn__front {
+  border-color: rgba(210, 170, 250, 0.65);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.1),
+    0 0 30px rgba(150, 80, 240, 0.48),
+    0 6px 24px rgba(0, 0, 0, 0.4);
+}
+
+.hero-power-btn:not(.is-used):not(:disabled):active .hero-power-btn__front {
+  transform: scale(0.94);
+  transition: transform 120ms ease;
+}
+
+/* 漩涡图标 — CSS 绘制术士生命分流图案 */
+.hero-power-btn__icon {
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  background-image:
+    linear-gradient(rgba(48, 12, 66, 0.08), rgba(48, 12, 66, 0.18)),
+    url("/life-tap-art.png");
+  background-size: cover;
+  background-position: 52% 48%;
+  border: 2px solid rgba(224, 192, 255, 0.5);
+  box-shadow:
+    inset 0 0 12px rgba(28, 5, 42, 0.45),
+    0 0 10px rgba(154, 83, 218, 0.28);
+  position: relative;
+}
+
+.hero-power-btn__icon::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 48% 42%, transparent 48%, rgba(24, 4, 36, 0.58) 100%);
+}
+
+/* 文字标签 */
+.hero-power-btn__label {
+  position: absolute;
+  bottom: 7px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #f2dcff;
+  text-shadow: 0 1px 3px #17051f, 0 0 4px #17051f;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* 费用数字 */
+.hero-power-btn__cost {
+  position: absolute;
+  top: -1px;
+  right: 4px;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #1a3060;
+  border: 1.5px solid rgba(100, 160, 240, 0.5);
+  color: #c0dcff;
+  font-size: 0.75rem;
+  font-weight: 800;
+  box-shadow: 0 0 6px rgba(60, 120, 220, 0.4);
+}
+
+/* 背面：已使用 */
+.hero-power-btn__back {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(80, 60, 100, 0.6), transparent 62%),
+    linear-gradient(145deg, #1a1028, #261836);
+  border: 2.5px solid rgba(140, 120, 170, 0.3);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.04),
+    0 0 12px rgba(80, 50, 120, 0.18),
+    0 4px 18px rgba(0, 0, 0, 0.35);
+  transform: rotateY(180deg);
+}
+
+.hero-power-btn__used-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid rgba(160, 140, 190, 0.4);
+  background: rgba(100, 80, 140, 0.25);
+  position: relative;
+}
+
+.hero-power-btn__used-icon::after {
+  content: "↻";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.2rem;
+  color: rgba(180, 160, 210, 0.6);
+}
+
+/* 费用减为 0 时高亮 */
+.hero-power-btn__cost.is-discounted {
+  background: #1a4a20;
+  border-color: rgba(120, 230, 130, 0.55);
+  color: #a0ffb0;
+  box-shadow: 0 0 8px rgba(80, 200, 100, 0.5);
+}
+
+/* 禁用/不可用状态 */
+.hero-power-btn:disabled .hero-power-btn__front {
+  filter: grayscale(0.4) brightness(0.7);
+  cursor: not-allowed;
+}
+
+.hero-power-btn.is-locked .hero-power-btn__front {
+  border-color: rgba(150, 130, 170, 0.25);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.04),
+    0 0 8px rgba(80, 50, 120, 0.15);
+}
+
+.hero-power-btn.is-locked .hero-power-btn__icon {
+  opacity: 0.55;
 }
 
 /* ===== 牌库叠堆 ===== */
@@ -939,6 +1275,179 @@ button {
   font-size: 0.75rem;
 }
 
+/* ===== 敌方头像后的紧凑手牌叠堆 ===== */
+
+.enemy-portrait-cluster {
+  position: relative;
+  width: 158px;
+  min-width: 158px;
+  height: 86px;
+  display: flex;
+  align-items: center;
+}
+
+.enemy-portrait-cluster .hero-avatar {
+  position: relative;
+  z-index: 3;
+  flex: 0 0 auto;
+}
+
+.enemy-hand-zone {
+  position: absolute;
+  z-index: 2;
+  left: 50px;
+  top: 50%;
+  width: 108px;
+  height: 62px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+
+.hand-track--enemy {
+  display: flex;
+  flex: 0 0 72px;
+  width: 72px;
+  height: 58px;
+  align-items: center;
+  overflow: visible;
+  padding: 0;
+}
+
+/* 敌方手牌 — 背面朝上 */
+.enemy-hand-card {
+  flex: 0 0 38px;
+  width: 38px;
+  height: 54px;
+  margin-left: -34px;
+  border-radius: 6px;
+  border: 1.5px solid rgba(255, 200, 120, 0.18);
+  background:
+    repeating-linear-gradient(
+      45deg,
+      rgba(180, 130, 80, 0.08) 0 2px,
+      transparent 2px 6px
+    ),
+    linear-gradient(160deg, #3d2818, #1a0f08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 3px 10px rgba(0, 0, 0, 0.3);
+  cursor: default;
+  user-select: none;
+  transition:
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 220ms ease;
+  position: relative;
+}
+
+.enemy-hand-card:first-child {
+  margin-left: 0;
+}
+
+.enemy-hand-card:nth-child(odd) {
+  transform: rotate(-2deg) translateY(1px);
+}
+
+.enemy-hand-card:nth-child(even) {
+  transform: rotate(2deg) translateY(-1px);
+}
+
+/* 背面花纹 — 炉石卡背风格 */
+.enemy-hand-card::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 200, 120, 0.22);
+  background:
+    radial-gradient(ellipse at 50% 40%, rgba(220, 170, 100, 0.25), transparent 60%),
+    repeating-linear-gradient(
+      0deg,
+      transparent 0 8px,
+      rgba(200, 150, 100, 0.06) 8px 10px
+    ),
+    linear-gradient(180deg, rgba(60, 35, 18, 0.9), rgba(30, 16, 8, 0.95));
+}
+
+.enemy-hand-count {
+  position: absolute;
+  z-index: 5;
+  left: 58px;
+  bottom: -2px;
+  min-width: 30px;
+  padding: 2px 6px;
+  border: 1px solid rgba(245, 223, 173, 0.38);
+  border-radius: 999px;
+  background: rgba(18, 10, 7, 0.92);
+  color: var(--gold-soft);
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1.25;
+  text-align: center;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.38);
+}
+
+/* 抽牌翻转入场动画 — 复用 */
+.enemy-hand-card.anim-card-flip-in {
+  animation: card-flip-in 400ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+/* 敌方牌库叠堆 */
+.deck-stack--enemy {
+  position: relative;
+  z-index: 4;
+  width: 34px;
+  height: 48px;
+  margin-left: 2px;
+  flex-shrink: 0;
+  cursor: default;
+  user-select: none;
+}
+
+.deck-stack--enemy .deck-stack__count {
+  font-size: 0.82rem;
+}
+
+.deck-stack--enemy::before,
+.deck-stack--enemy::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 200, 120, 0.12);
+  background: linear-gradient(160deg, #3d2818, #1a0f08);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.deck-stack--enemy::before {
+  transform: translate(-2px, -2px);
+  z-index: 0;
+}
+
+.deck-stack--enemy::after {
+  transform: translate(-4px, -4px);
+  z-index: -1;
+}
+
+.deck-stack--enemy .deck-stack__count {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: #c8a878;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  background: linear-gradient(160deg, rgba(80, 50, 25, 0.9), rgba(35, 20, 10, 0.95));
+  border-radius: 6px;
+  border: 1px solid rgba(200, 150, 100, 0.2);
+}
+
 /* ===== 浮动战斗数字 ===== */
 
 .combat-text-layer {
@@ -989,36 +1498,39 @@ button {
     border-color 200ms ease,
     box-shadow 200ms ease,
     filter 200ms ease,
-    z-index 0s;
+    z-index 0s,
+    flex-basis 300ms ease-out,
+    opacity 280ms ease-out,
+    margin-left 300ms ease-out,
+    margin-right 300ms ease-out,
+    padding-left 300ms ease-out,
+    padding-right 300ms ease-out;
+}
+
+.game-card.is-exiting {
+  flex: 0 0 0px !important;
+  align-self: flex-start;
+  height: var(--hand-card-exit-height);
+  min-height: var(--hand-card-exit-height) !important;
+  max-height: var(--hand-card-exit-height);
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  opacity: 0 !important;
+  overflow: hidden !important;
+  border-width: 0 !important;
+  pointer-events: none !important;
+  transform: none !important;
 }
 
 .game-card:hover,
 .game-card:focus-visible {
-  transform: translateY(-16px) scale(1.06);
-  z-index: 10;
+  transform: translateY(-16px) scale(1.18);
+  z-index: 20;
   box-shadow:
-    0 20px 40px rgba(0, 0, 0, 0.4),
-    0 0 30px rgba(200, 180, 140, 0.12);
-}
-
-.game-card:hover ~ .game-card {
-  transform: translateX(4px);
-}
-
-.game-card:has(~ .game-card:hover) {
-  transform: translateX(-4px);
-}
-
-/* 移动端不抬升 */
-@media (hover: none) and (pointer: coarse) {
-  .game-card:hover {
-    transform: none;
-    box-shadow: none;
-  }
-  .game-card:hover ~ .game-card,
-  .game-card:has(~ .game-card:hover) {
-    transform: none;
-  }
+    0 24px 48px rgba(0, 0, 0, 0.5),
+    0 0 40px rgba(200, 180, 140, 0.18);
 }
 
 /* ===== 攻击前冲动画 ===== */
@@ -1446,7 +1958,13 @@ button {
     transform 140ms ease,
     border-color 140ms ease,
     box-shadow 140ms ease,
-    filter 140ms ease;
+    filter 140ms ease,
+    flex-basis 300ms ease-out,
+    opacity 280ms ease-out,
+    margin-left 300ms ease-out,
+    margin-right 300ms ease-out,
+    padding-left 300ms ease-out,
+    padding-right 300ms ease-out;
 }
 
 .game-card:hover,

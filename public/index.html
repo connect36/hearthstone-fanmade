@@ -50,6 +50,14 @@
               </div>
             </button>
 
+            <button id="btn-dragon-warrior" class="mode-btn">
+              <span class="mode-icon">🐉</span>
+              <div class="mode-info">
+                <span class="mode-title">龙战 AI 陪练</span>
+                <span class="mode-desc">火焰龙战套牌，AI 决策引擎驱动，具备斩杀搜索和束搜索</span>
+              </div>
+            </button>
+
             <button id="btn-battlegrounds" class="mode-btn">
               <span class="mode-icon">⚔️</span>
               <div class="mode-info">
@@ -154,7 +162,17 @@
             data-side="enemy"
           >
             <div class="hero-panel__frame">
-              <div class="hero-avatar hero-avatar--enemy" aria-hidden="true"></div>
+              <div class="enemy-portrait-cluster">
+                <div class="hero-avatar hero-avatar--enemy" aria-hidden="true"></div>
+                <!-- 敌方手牌只显示紧凑卡背叠堆与数量，不再单独占据一整行 -->
+                <div class="enemy-hand-zone" id="enemy-hand-zone" data-zone="enemy-hand" style="display:none;" aria-label="敌方手牌与牌库">
+                  <div class="hand-track hand-track--enemy" id="enemy-hand-cards" aria-hidden="true"></div>
+                  <span class="enemy-hand-count" id="enemy-hand-count-hint">×0</span>
+                  <div class="deck-stack deck-stack--enemy" id="enemy-deck-stack" aria-label="敌方牌库">
+                    <span class="deck-stack__count" id="enemy-deck-count">0</span>
+                  </div>
+                </div>
+              </div>
               <div class="hero-copy">
                 <p class="section-label">敌方英雄区</p>
                 <h2 class="hero-name" id="enemy-hero-name">等待接入</h2>
@@ -169,6 +187,11 @@
                 <span class="resource-pill resource-pill--armor" id="enemy-armor">
                   0
                 </span>
+                <div class="weapon-slot" id="enemy-weapon" data-weapon style="display:none" aria-label="敌方武器">
+                  <span class="weapon-slot__attack">0</span>
+                  <span class="weapon-slot__durability">0</span>
+                </div>
+                <span class="weapon-slot__name" id="enemy-weapon-name"></span>
                 <div class="mana-crystals" id="enemy-mana-crystals" aria-label="敌方法力水晶"></div>
               </div>
             </div>
@@ -217,13 +240,35 @@
                   这里承载玩家头像、生命值、护甲与法力水晶。
                 </p>
               </div>
-              <div class="hero-resources" aria-label="玩家资源">
-                <span class="resource-pill resource-pill--health" id="player-health">
+              <div class="hero-resources hero-resources--player" aria-label="玩家资源">
+                <button
+                  type="button"
+                  class="hero-power-btn"
+                  id="hero-power-btn"
+                  aria-label="英雄技能 生命分流"
+                >
+                  <span class="hero-power-btn__inner">
+                    <span class="hero-power-btn__front" aria-hidden="true">
+                      <span class="hero-power-btn__icon"></span>
+                      <span class="hero-power-btn__label">生命分流</span>
+                      <span class="hero-power-btn__cost">2</span>
+                    </span>
+                    <span class="hero-power-btn__back" aria-hidden="true">
+                      <span class="hero-power-btn__used-icon"></span>
+                    </span>
+                  </span>
+                </button>
+                <span class="resource-pill resource-pill--health" id="player-health" aria-label="生命值">
                   30
                 </span>
-                <span class="resource-pill resource-pill--armor" id="player-armor">
+                <span class="resource-pill resource-pill--armor" id="player-armor" aria-label="护甲" title="护甲" hidden>
                   0
                 </span>
+                <div class="weapon-slot" id="player-weapon" data-weapon style="display:none" aria-label="你的武器">
+                  <span class="weapon-slot__attack">0</span>
+                  <span class="weapon-slot__durability">0</span>
+                </div>
+                <span class="weapon-slot__name" id="player-weapon-name"></span>
                 <div class="mana-crystals" id="player-mana-crystals" aria-label="法力水晶"></div>
               </div>
             </div>

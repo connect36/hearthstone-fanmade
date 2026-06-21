@@ -1,5 +1,11 @@
 # 更新日志
 
+## 2026-06-19 · 项目目录重命名
+
+- 项目目录由 `/Users/ruiliu/Documents/炉石传说卡组体验` 重命名为 `/Users/ruiliu/Documents/炉石传说游戏自制`。
+- 更新 README、AI 交接、开发指南与发布文档中的绝对路径。
+- Git 仓库、Claude Code 会话和本地 Node 服务继续使用同一项目内容。
+
 ## 2026-06-19 · 黑眼任务术与卡牌库页面
 
 - 导入卡组代码 `AAEBAf0GBI+CA4T7A8jrBZWzBg3y0AL40AL6/gLLuQOVzQObzQPXzgPB0QPO+gXEngajoAbDuAbJ5AYAAA==`。

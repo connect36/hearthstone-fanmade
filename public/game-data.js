@@ -1,3 +1,5 @@
+import { dragonWarriorCards } from './dragon-warrior-cards.js';
+
 export const importedDeckCode = 'AAEBAcClBgrnywKPggOdqQOE+wPlsATEngbQngajoAaVswbRggcK3Ary0AL6/gKVzQPXzgPB0QPO+gXDuAbJ5AaEmQcAAA==';
 export const updatedDeckCode = 'AAEBAf0GBI+CA4T7A8jrBZWzBg3y0AL40AL6/gLLuQOVzQObzQPXzgPB0QPO+gXEngajoAbDuAbJ5AYAAA==';
 
@@ -86,7 +88,7 @@ export const questlineDeckCards = Object.freeze([
   {
     id: 'hs-104853', dbfId: 104853, name: '多米诺效应', cost: 3, type: 'spell', deckCount: 1,
     text: '对一个随从造成2点伤害。向左侧或右侧重复此效果，每次伤害增加1点。',
-    effects: [{ type: 'adjacentChainDamage', target: 'playerChoice', targetKinds: ['minion'], amount: 2, step: 1 }],
+    effects: [{ type: 'adjacentChainDamage', target: 'playerChoice', targetKinds: ['minion'], amount: 2, step: 1, direction: 'random' }],
   },
   {
     id: 'hs-97614', dbfId: 97614, name: '被禁锢的恐魔', cost: 9, type: 'minion', attack: 4, health: 4, deckCount: 2,
@@ -96,7 +98,7 @@ export const questlineDeckCards = Object.freeze([
   {
     id: 'hs-59585', dbfId: 59585, name: '血肉巨人', cost: 10, type: 'minion', attack: 8, health: 8, deckCount: 2,
     text: '你的英雄的生命值每在你的回合中变化一次，本牌的法力值消耗便减少（1）点。',
-    costModifier: { rule: 'healthChangedThisTurn', amountPer: 1, minimum: 0 }, effects: [],
+    costModifier: { rule: 'healthChangedThisGame', amountPer: 1, minimum: 0 }, effects: [],
   },
   {
     id: 'hs-1372', dbfId: 1372, name: '熔核巨人', cost: 20, type: 'minion', attack: 8, health: 8, deckCount: 0,
@@ -172,6 +174,7 @@ export const currentDeckCollection = deckCollections[1];
 export const cards = Object.freeze([
   ...questlineDeckCards,
   ...additionalRecordedCards,
+  ...dragonWarriorCards,
   {
     id: 'ember-bolt',
     name: '余烬箭',
@@ -297,6 +300,15 @@ export const encounter = Object.freeze({
     maxBoardSize: 7,
     deck: starterDeck,
     cardPool,
+    heroPower: {
+      name: '生命分流',
+      cost: 2,
+      text: '抽一张牌。对你的英雄造成 2 点伤害。',
+      effects: [
+        { type: 'draw', target: 'friendlyHero', amount: 1 },
+        { type: 'selfDamage', amount: 2 },
+      ],
+    },
   },
   boss: {
     id: 'kovo-the-frostwarden',

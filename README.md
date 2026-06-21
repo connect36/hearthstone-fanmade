@@ -15,7 +15,7 @@ The current default deck is a 30-card Wild Warlock questline/self-damage deck. S
 
 Project root:
 
-- `/Users/ruiliu/Documents/炉石传说卡组体验`
+- `/Users/ruiliu/Documents/炉石传说游戏自制`
 
 GitHub repository:
 
@@ -95,7 +95,7 @@ The editor can currently modify:
 ## Run
 
 ```bash
-cd "/Users/ruiliu/Documents/炉石传说卡组体验"
+cd "/Users/ruiliu/Documents/炉石传说游戏自制"
 npm install
 npm start
 ```

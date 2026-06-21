@@ -156,7 +156,7 @@ function createEmptyEffectGroup(trigger = 'onPlay') {
     delayedSelfDamage: 0, delayedTurns: 0,
     shuffleCopies: 0,
     // 多米诺效应 — 连锁伤害
-    chainDamage: 0, chainDamageStep: 1, chainDirection: 'right',
+    chainDamage: 0, chainDamageStep: 1, chainDirection: 'random',
     condition: '', conditionType: '', conditionTarget: 'enemyHero', conditionAmount: 0,
   };
 }
@@ -249,7 +249,9 @@ function updateDerivedMechanicsDisplay(model, card) {
 function extractStructuredEffects(card) {
   const model = createDefaultEditorModel(card.type);
   model.keywords = normalizeKeywords(card.keywords);
-  model.costRule = card.costModifier?.rule || '';
+  model.costRule = card.costModifier?.rule === 'healthChangedThisTurn'
+    ? 'healthChangedThisGame'
+    : (card.costModifier?.rule || '');
   model.costMinimum = Number(card.costModifier?.minimum) || 0;
 
   const effects = card.effects || [];
@@ -437,7 +439,7 @@ function getEditorModel(card) {
       questlineEnabled: !!(oldThresholds.length),
       questStages,
       questFinalReward: 'hs-67547',
-      costRule: old.costRule || '',
+      costRule: old.costRule === 'healthChangedThisTurn' ? 'healthChangedThisGame' : (old.costRule || ''),
       costMinimum: old.costMinimum || 0,
       triggerGroups: [group],
       extraEffects: old.extraEffects || [],
@@ -634,6 +636,7 @@ function buildEffectGroupHTML(group, index, totalGroups, cardType) {
         <label>
           <span>连锁方向</span>
           <select class="group-chain-direction" data-group-index="${index}">
+            <option value="random" ${!group.chainDirection || group.chainDirection === 'random' ? 'selected' : ''}>随机（炉石规则）</option>
             <option value="right" ${group.chainDirection === 'right' ? 'selected' : ''}>向右</option>
             <option value="left" ${group.chainDirection === 'left' ? 'selected' : ''}>向左</option>
           </select>
@@ -752,7 +755,7 @@ function readEffectGroupFromDOM(groupEl) {
     shuffleCopies: getNum('group-shuffle-copies'),
     chainDamage: getNum('group-chain-damage'),
     chainDamageStep: getNum('group-chain-step', 1),
-    chainDirection: getVal('group-chain-direction') || 'right',
+    chainDirection: getVal('group-chain-direction') || 'random',
     condition: getVal('group-condition'),
     conditionType: getVal('group-condition-type'),
     conditionTarget: getVal('group-condition-target') || 'enemyHero',
@@ -840,7 +843,7 @@ function buildEffectsFromModel(cardType, model) {
         targetKinds: ['minion'],
         amount: group.chainDamage,
         step: group.chainDamageStep || 1,
-        direction: group.chainDirection || 'right',
+        direction: group.chainDirection || 'random',
         ...(trigger ? { trigger } : {}),
       });
     }
@@ -1016,7 +1019,9 @@ function buildGeneratedText(card, model) {
   // 动态费用
   if (model.costRule === 'missingHealth') parts.push('你的英雄每缺失一点生命值，本牌的法力值消耗便减少（1）点。');
   if (model.costRule === 'selfDamageThisGame') parts.push('本局每在你的回合受到一点伤害，本牌的法力值消耗便减少（1）点。');
-  if (model.costRule === 'healthChangedThisTurn') parts.push('本回合你的英雄生命值每变化一次，本牌的法力值消耗便减少（1）点。');
+  if (model.costRule === 'healthChangedThisGame' || model.costRule === 'healthChangedThisTurn') {
+    parts.push('你的英雄的生命值每在你的回合中变化一次，本牌的法力值消耗便减少（1）点。');
+  }
 
   // 按 trigger 分组生成效果文本
   const groupsByTrigger = new Map();

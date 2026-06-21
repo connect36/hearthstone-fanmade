@@ -2,7 +2,7 @@
 
 ## Project Root
 
-- `/Users/ruiliu/Documents/炉石传说卡组体验`
+- `/Users/ruiliu/Documents/炉石传说游戏自制`
 
 ## Tech Stack
 
@@ -13,7 +13,7 @@
 ## Start the Project
 
 ```bash
-cd "/Users/ruiliu/Documents/炉石传说卡组体验"
+cd "/Users/ruiliu/Documents/炉石传说游戏自制"
 npm install
 npm start
 ```

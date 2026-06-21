@@ -2,7 +2,7 @@
 
 ## Project Root
 
-- `/Users/ruiliu/Documents/炉石传说卡组体验`
+- `/Users/ruiliu/Documents/炉石传说游戏自制`
 
 ## Document Scope
 

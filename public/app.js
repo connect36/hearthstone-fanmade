@@ -12,6 +12,8 @@ import {
 } from './keywords.js';
 import { network } from './network.js';
 import { hideBattlegroundsView, renderBattlegroundsView } from './battlegrounds-view.js';
+import { decideDragonWarriorTurn, mulliganDragonWarrior } from './dragon-warrior-ai.js';
+import { dragonWarriorDeck } from './dragon-warrior-cards.js';
 import './animations.js';
 
 // ============================================
@@ -72,9 +74,50 @@ const TEST_SOLO_SCENARIO = Object.freeze({
     summonMinion: { name: '测试随从', attack: 2, health: 2 },
   },
 });
+// 龙战 AI 场景 — boss 使用火焰龙战套牌，AI 驱动决策
+const DRAGON_WARRIOR_SCENARIO = Object.freeze({
+  scenarioId: 'dragon-warrior',
+  id: 'dragon_warrior_ai',
+  title: '炉边酒馆',
+  subtitle: '龙战 AI 陪练',
+  description: '火焰龙战 AI（Vicious Syndicate 套牌）。具备龙锚点保护、火焰法术+火山、格罗玛什斩杀等策略。',
+  modeLabel: '龙战陪练中',
+  turnLimit: null,
+  rulesText: '对手使用完整的火焰龙战套牌，由 AI 决策引擎控制。AI 会主动管理龙条件、火焰法术顺序、格罗玛什斩杀等。',
+  player: {
+    ...encounter.player,
+  },
+  boss: {
+    name: '龙战高手',
+    heroHealth: 30,
+    heroArmor: 0,
+    heroPower: {
+      name: '全副武装！',
+      cost: 2,
+      text: '获得 2 点护甲值。',
+      effects: [
+        { type: 'armor', target: 'friendlyHero', amount: 2 },
+      ],
+    },
+    passive: {
+      name: '龙族亲和',
+      text: '龙战高手精通火焰龙战，采用束搜索 AI 决策。',
+    },
+    aiBias: {
+      style: 'dragon-warrior',
+      priorities: ['龙锚点保护', '火焰法术+火山', '晦鳞巢母返费', '格罗玛什斩杀', '乘风浮龙规划'],
+    },
+    turnScript: '__DRAGON_WARRIOR_AI__',
+  },
+  objectives: [
+    { id: 'dw-practice', type: 'practice', text: '与火焰龙战 AI 练习对战，体验真实的龙战决策。' },
+  ],
+});
+
 const SOLO_SCENARIOS = Object.freeze({
   boss: BOSS_SOLO_SCENARIO,
   test: TEST_SOLO_SCENARIO,
+  'dragon-warrior': DRAGON_WARRIOR_SCENARIO,
 });
 const SOLO_PROGRESS_STORAGE_KEY = 'clawteam-lan-hearthstone-solo-progress-v2';
 const PVP_PROGRESS_STORAGE_KEY = 'clawteam-lan-hearthstone-pvp-progress-v2';
@@ -475,6 +518,7 @@ const elements = {
   btnCreateRoom: document.getElementById('btn-create-room'),
   btnShowJoin: document.getElementById('btn-show-join'),
   btnStartTest: document.getElementById('btn-start-test'),
+  btnDragonWarrior: document.getElementById('btn-dragon-warrior'),
   btnBackFromPvp: document.getElementById('btn-back-from-pvp'),
 
   // 创建房间
@@ -525,6 +569,17 @@ const elements = {
   handCards: document.getElementById('hand-cards'),
   deckStack: document.getElementById('deck-stack'),
   deckCount: document.getElementById('deck-count'),
+  enemyHandZone: document.getElementById('enemy-hand-zone'),
+  enemyHandCards: document.getElementById('enemy-hand-cards'),
+  enemyHandCountHint: document.getElementById('enemy-hand-count-hint'),
+  enemyDeckStack: document.getElementById('enemy-deck-stack'),
+  enemyDeckCount: document.getElementById('enemy-deck-count'),
+  playerWeapon: document.getElementById('player-weapon'),
+  playerWeaponAtk: document.querySelector('#player-weapon .weapon-slot__attack'),
+  playerWeaponDur: document.querySelector('#player-weapon .weapon-slot__durability'),
+  enemyWeapon: document.getElementById('enemy-weapon'),
+  enemyWeaponAtk: document.querySelector('#enemy-weapon .weapon-slot__attack'),
+  enemyWeaponDur: document.querySelector('#enemy-weapon .weapon-slot__durability'),
   combatTextLayer: document.getElementById('combat-text-layer'),
   combatLog: document.getElementById('combat-log'),
   restartButton: document.getElementById('restart-button'),
@@ -1053,8 +1108,8 @@ function setupLobbyEvents() {
     startSoloMode('test');
   });
 
-  elements.btnStartTest?.addEventListener('click', () => {
-    startSoloMode('test');
+  elements.btnDragonWarrior?.addEventListener('click', () => {
+    startSoloMode('dragon-warrior');
   });
 
   // PvP选择页面 - 返回大厅
@@ -1245,6 +1300,8 @@ function initSoloState() {
   const scenario = getSoloScenario();
   const playerDeck = buildDeck();
 
+  _handDomIds.clear();
+  elements.handCards.style.minHeight = '';
   state.solo.phase = 'player';
   state.solo.turn = 1;
   state.solo.selectedAttackerId = '';
@@ -1262,11 +1319,23 @@ function initSoloState() {
     deck: playerDeck,
     hand: [],
     board: [],
+    heroPowerUsed: false,
+    // 武器
+    weapon: null,
+    heroAttackThisTurn: 0,
+    // 地标
+    locations: [],
+    // 延系 / 火焰法术追踪
+    tribesPlayedThisTurn: [],
+    tribesPlayedLastTurn: [],
+    spellSchoolsPlayedThisTurn: [],
+    playedFireSpellThisTurn: false,
     runtime: {
       selfDamageThisTurn: 0,
       selfDamageThisGame: 0,
       damageTakenThisTurn: 0,
       healthChangesThisTurn: 0,
+      healthChangesThisGame: 0,
       questline: null,
       redirectSelfDamage: false,
       delayedDamage: [],
@@ -1274,15 +1343,115 @@ function initSoloState() {
     },
   };
 
-  state.solo.boss = {
-    heroName: scenario.boss.name,
-    health: scenario.boss.heroHealth,
-    maxHealth: scenario.boss.heroHealth,
-    armor: scenario.boss.heroArmor,
-    mana: 1,
-    maxMana: 1,
-    board: [],
-  };
+  const isDragonWarrior = (scenario.scenarioId || state.solo?.scenarioId) === 'dragon-warrior';
+
+  if (isDragonWarrior) {
+    // 龙战 boss：拥有完整的牌库和手牌系统
+    const bossDeck = buildDragonWarriorBossDeck();
+    const bossHand = [];
+    // 初始抽 4 张（后手）
+    for (let i = 0; i < 4; i++) {
+      if (bossDeck.length) bossHand.push(bossDeck.pop());
+    }
+    // 起手调度 — 换掉的牌洗回，但保留整体最优排序
+    const mulliganResult = mulliganDragonWarrior(bossHand, false, 'tempo');
+    if (mulliganResult.mulligan.length > 0) {
+      const toShuffle = mulliganResult.mulligan;
+      for (const c of toShuffle) {
+        const idx = bossHand.findIndex(h => h.instanceId === c.instanceId);
+        if (idx >= 0) bossHand.splice(idx, 1);
+      }
+      // 换掉的牌随机插回牌库（不破坏整体顺序）
+      for (const c of toShuffle) {
+        const pos = Math.floor(Math.random() * bossDeck.length);
+        bossDeck.splice(pos, 0, c);
+      }
+      // 重抽等量
+      for (let i = 0; i < toShuffle.length && bossDeck.length > 0; i++) {
+        bossHand.push(bossDeck.pop());
+      }
+      pushSoloLog(`${scenario.boss.name} 调度了 ${toShuffle.length} 张牌。`);
+    }
+    state.solo.boss = {
+      heroName: scenario.boss.name,
+      health: scenario.boss.heroHealth,
+      maxHealth: scenario.boss.heroHealth,
+      armor: scenario.boss.heroArmor,
+      mana: 1,
+      maxMana: 1,
+      deck: bossDeck,
+      hand: bossHand,
+      board: [],
+      heroPowerUsed: false,
+      weapon: null,
+      heroAttackThisTurn: 0,
+      heroAttackUsedThisTurn: false,
+      locations: [],
+      tribesPlayedThisTurn: [],
+      tribesPlayedLastTurn: [],
+      spellSchoolsPlayedThisTurn: [],
+      playedFireSpellThisTurn: false,
+      runtime: {
+        selfDamageThisTurn: 0,
+        selfDamageThisGame: 0,
+        damageTakenThisTurn: 0,
+        healthChangesThisTurn: 0,
+        healthChangesThisGame: 0,
+        questline: null,
+        redirectSelfDamage: false,
+        delayedDamage: [],
+        deadFriendlyMinions: [],
+      },
+    };
+  } else {
+    state.solo.boss = {
+      heroName: scenario.boss.name,
+      health: scenario.boss.heroHealth,
+      maxHealth: scenario.boss.heroHealth,
+      armor: scenario.boss.heroArmor,
+      mana: 1,
+      maxMana: 1,
+      board: [],
+    };
+  }
+}
+
+// 龙战 boss 牌序优先级 — 越高越早抽到（pop 从末尾取，所以权重高的排末尾）
+const DW_CARD_ORDER = {
+  'dw-grommash': 1,                 // 8费 格罗玛什 — 最后抽到
+  'dw-eternal-pain': 2,             // 1费 永时困苦
+  'dw-crimson-abyss': 3,            // 1费 赤红深渊
+  'dw-searing-flame': 4,            // 1费 烈火炙烤
+  'dw-field-announcer': 8,          // 4费 现场播报员
+  'dw-erupting-volcano': 10,        // 3费 喷发火山
+  'dw-windrider-dragon': 12,        // 8→5费 乘风浮龙
+  'dw-prescient-whelp': 14,         // 7→4费 先觉蜿变幼龙
+  'dw-dark-scale-matron': 16,       // 3费 晦鳞巢母
+  'dw-scorching-fissure': 18,       // 2费 灼热裂隙
+  'dw-preemptive-strike': 19,       // 2费 先行打击
+  'dw-shadow-flame-infusion': 20,   // 2费 影焰晕染
+  'dw-flower-vendor': 22,           // 2费 鲜花商贩
+  'dw-dragon-nest-guardian': 24,    // 2费 龙巢守护者
+  'dw-dark-dragon-knight': 26,      // 1费 黑暗的龙骑士
+  'dw-egg-carrier': 28,             // 1费 载蛋雏龙 — 最先抽到
+};
+
+function buildDragonWarriorBossDeck() {
+  const deck = [];
+  for (const entry of dragonWarriorDeck) {
+    const card = effectiveCardById[entry.cardId];
+    if (!card) continue;
+    for (let i = 0; i < (entry.count || 1); i++) {
+      deck.push({ ...card, instanceId: uid(`dw-card-${card.id}`) });
+    }
+  }
+  // 按预设权重排序，高权重排末尾 → pop() 先抽到
+  deck.sort((a, b) => {
+    const wa = DW_CARD_ORDER[a.id] ?? 15;
+    const wb = DW_CARD_ORDER[b.id] ?? 15;
+    return wa - wb;
+  });
+  return deck;
 }
 
 // ============================================
@@ -1990,8 +2159,14 @@ function updatePvpState(gameState) {
         { durationMs: 900 }
       );
     }
-    if ((state.pvp.player?.hand?.length ?? 0) > previousHandCount) {
-      animator?.drawCard?.(elements.handCards);
+    const currentHandCount = state.pvp.player?.hand?.length ?? 0;
+    if (currentHandCount > previousHandCount) {
+      // 只让新抽到的卡入场，不再对整个手牌容器做位移/缩放。
+      const addedCount = currentHandCount - previousHandCount;
+      const handCardElements = [...elements.handCards.querySelectorAll('.game-card')];
+      handCardElements.slice(-addedCount).forEach((cardEl, index) => {
+        animator?.drawCard?.(cardEl, { delayMs: index * 60 });
+      });
     }
   }
 }
@@ -2091,11 +2266,16 @@ function getScriptForTurn(turn) {
       line: '获得 5 点护甲，并召唤 1 个 2/2 随从。',
     };
   }
+  // 龙战等AI场景不通过传统脚本
+  if (typeof scenario.boss.turnScript === 'string') return null;
+  if (!Array.isArray(scenario.boss.turnScript)) return null;
   return scenario.boss.turnScript.find((entry) => entry.turn === turn) || null;
 }
 
 function describeBossMove(turn = state.solo.turn) {
   const scenario = getSoloScenario();
+  // 龙战等 AI 场景不显示虚假的下一手
+  if (typeof scenario.boss.turnScript === 'string') return '';
   const script = getScriptForTurn(turn);
   if (!script) {
     return `${scenario.boss.heroPower.name}: ${scenario.boss.heroPower.text}`;
@@ -2125,6 +2305,14 @@ function restoreHealth(target, amount) {
   return target.health - before;
 }
 
+function recordPlayerHealthChangeSolo() {
+  if (state.solo.phase !== 'player') return;
+  const runtime = ensureSoloRuntime('player');
+  if (!runtime) return;
+  runtime.healthChangesThisTurn = (runtime.healthChangesThisTurn || 0) + 1;
+  runtime.healthChangesThisGame = (runtime.healthChangesThisGame || 0) + 1;
+}
+
 function dealDamage(target, amount) {
   if (amount <= 0) return 0;
   const absorbed = Math.min(target.armor, amount);
@@ -2132,9 +2320,9 @@ function dealDamage(target, amount) {
   const healthLoss = amount - absorbed;
   const before = target.health;
   target.health -= healthLoss;
-  // 追踪生命值变化（用于血肉巨人等动态费用）
-  if (before !== target.health && target.runtime) {
-    target.runtime.healthChangesThisTurn = (target.runtime.healthChangesThisTurn || 0) + 1;
+  // 追踪生命值变化（用于血肉巨人等动态费用，仅玩家回合计数）
+  if (before !== target.health && target === state.solo.player) {
+    recordPlayerHealthChangeSolo();
   }
   return healthLoss;
 }
@@ -2147,11 +2335,14 @@ function ensureSoloRuntime(side = 'player') {
     selfDamageThisGame: 0,
     damageTakenThisTurn: 0,
     healthChangesThisTurn: 0,
+    healthChangesThisGame: 0,
     questline: null,
     redirectSelfDamage: false,
     delayedDamage: [],
     deadFriendlyMinions: [],
   };
+  hero.runtime.healthChangesThisTurn ||= 0;
+  hero.runtime.healthChangesThisGame ??= hero.runtime.healthChangesThisTurn;
   return hero.runtime;
 }
 
@@ -2159,14 +2350,28 @@ function getEffectiveCardCostSolo(card) {
   const baseCost = Math.max(0, Number(card?.cost) || 0);
   const modifier = card?.costModifier;
   if (!modifier) return baseCost;
+
+  // 龙战 boss 的手牌检查
+  const scenario = getSoloScenario();
+  const isDW = scenario.scenarioId === 'dragon-warrior';
+  const bossHand = isDW ? (state.solo.boss?.hand || []) : [];
+
   const runtime = ensureSoloRuntime('player');
   let progress = 0;
   if (modifier.rule === 'missingHealth') {
     progress = Math.max(0, (state.solo.player.maxHealth || 30) - state.solo.player.health);
   } else if (modifier.rule === 'selfDamageThisGame') {
     progress = runtime?.selfDamageThisGame || 0;
-  } else if (modifier.rule === 'healthChangedThisTurn') {
-    progress = runtime?.healthChangesThisTurn || 0;
+  } else if (modifier.rule === 'healthChangedThisTurn' || modifier.rule === 'healthChangedThisGame') {
+    progress = runtime?.healthChangesThisGame || 0;
+  } else if (modifier.rule === 'holdingAnotherDragon') {
+    const hand = isDW && bossHand.length ? bossHand : (state.solo.player?.hand || []);
+    const hasOtherDragon = hand.some(c => c.instanceId !== card.instanceId && (c.tribes || []).includes('dragon'));
+    progress = hasOtherDragon ? Number(modifier.amount) || 3 : 0;
+  } else if (modifier.rule === 'kindredDragon') {
+    const tribes = isDW ? (state.solo.boss?.tribesPlayedLastTurn || []) : [];
+    const playedDragonLastTurn = tribes.includes('dragon');
+    progress = playedDragonLastTurn ? Number(modifier.amount) || 3 : 0;
   }
   return Math.max(Number(modifier.minimum) || 0, baseCost - progress * (Number(modifier.amountPer) || 1));
 }
@@ -2196,7 +2401,7 @@ function advanceQuestlineSolo(amount) {
         dealDamage(state.solo.boss, damage);
         const before = state.solo.player.health;
         state.solo.player.health = Math.min(state.solo.player.maxHealth, state.solo.player.health + (quest.rewardHeal || damage));
-        if (state.solo.player.health !== before) runtime.healthChangesThisTurn += 1;
+        if (state.solo.player.health !== before) recordPlayerHealthChangeSolo();
         pushSoloLog(`任务线第 ${quest.stage} 阶段完成：对敌方英雄造成 ${damage} 点伤害，并恢复等量生命。`);
       }
     } else {
@@ -2214,6 +2419,11 @@ function applySelfDamageSolo(actorSide, amount) {
   const runtime = ensureSoloRuntime(actorSide);
   if (actorSide === 'player' && runtime?.redirectSelfDamage && state.solo.phase === 'player') {
     dealDamage(state.solo.boss, numericAmount);
+    // 伤害虽已转移，但本次自伤的计数仍要累加（治疗石、任务进度等依赖此计数）
+    runtime.damageTakenThisTurn += numericAmount;
+    runtime.selfDamageThisTurn += numericAmount;
+    runtime.selfDamageThisGame += numericAmount;
+    advanceQuestlineSolo(numericAmount);
     pushSoloLog(`枯萎化身将 ${numericAmount} 点自伤转移给了 ${state.solo.boss.heroName}。`);
     return numericAmount;
   }
@@ -2315,6 +2525,7 @@ function dealMinionDamageSolo(attacker, attackerSide, defender, amount) {
     return 0;
   }
 
+  const beforeHealth = defender.health;
   const actualDamage = Math.min(amount, Math.max(defender.health, 0));
   defender.health -= amount;
 
@@ -2324,6 +2535,20 @@ function dealMinionDamageSolo(attacker, attackerSide, defender, amount) {
 
   if (actualDamage > 0 && attacker && hasKeyword(attacker, 'lifesteal')) {
     healHeroWithLifestealSolo(attackerSide, actualDamage);
+  }
+
+  // 激怒：受伤时触发 enrageAttackBuff (格罗玛什)
+  if (actualDamage > 0 && defender.health < (defender.maxHealth || defender.health + actualDamage)) {
+    for (const e of (defender.effects || [])) {
+      if (e.type === 'enrageAttackBuff') {
+        const buff = Number(e.amount) || 6;
+        if (!defender._enraged) {
+          defender._enraged = true;
+          defender.attack = (defender.attack || 0) + buff;
+          pushSoloLog(`${defender.name} 受伤激怒，攻击力提升至 ${defender.attack}！`);
+        }
+      }
+    }
   }
 
   return actualDamage;
@@ -2561,14 +2786,23 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
     if (effect.trigger && effect.trigger !== (context.trigger || 'onPlay')) continue;
 
     if (effect.type === 'conditional') {
-      const controlsMinion = actorSide === 'player' ? state.solo.player.board.length > 0 : state.solo.boss.board.length > 0;
+      const hero = state.solo[actorSide];
+      const hand = hero?.hand || [];
+      const controlsMinion = (hero?.board || hero === state.solo.player ? state.solo.player.board.length : state.solo.boss.board.length) > 0;
       const controlsNoMinion = !controlsMinion;
-      if (effect.condition === 'controlsMinion' && controlsMinion) {
-        applyEffectsSolo(effect.effects, actorSide, context);
-      }
-      if (effect.condition === 'controlsNoMinion' && controlsNoMinion) {
-        applyEffectsSolo(effect.effects, actorSide, context);
-      }
+      const holdsDragon = hand.some(c => (c.tribes || []).includes('dragon'));
+      const thisId = context.sourceCard?.instanceId;
+      const holdsAnotherDragon = hand.some(c => c.instanceId !== thisId && (c.tribes || []).includes('dragon'));
+      const holdHighCostMinion = hand.some(c => c.type === 'minion' && getEffectiveCardCostSolo(c) >= 5);
+
+      let condMet = false;
+      if (effect.condition === 'controlsMinion' && controlsMinion) condMet = true;
+      if (effect.condition === 'controlsNoMinion' && controlsNoMinion) condMet = true;
+      if (effect.condition === 'holdingDragon' && holdsDragon) condMet = true;
+      if (effect.condition === 'holdingAnotherDragon' && holdsAnotherDragon) condMet = true;
+      if (effect.condition === 'holdingHighCostMinion' && holdHighCostMinion) condMet = true;
+
+      if (condMet) applyEffectsSolo(effect.effects, actorSide, context);
       continue;
     }
 
@@ -2625,7 +2859,7 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       const before = state.solo.player.health;
       state.solo.player.health = Math.min(state.solo.player.maxHealth, state.solo.player.health + runtime.damageTakenThisTurn);
       const restored = state.solo.player.health - before;
-      if (restored > 0) runtime.healthChangesThisTurn += 1;
+      if (restored > 0) recordPlayerHealthChangeSolo();
       pushSoloLog(`治疗石恢复了 ${restored} 点生命值。`);
       continue;
     }
@@ -2712,22 +2946,154 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       const board = state.solo[targetRef.side].board;
       const startIndex = board.findIndex((minion) => minion.instanceId === targetRef.id);
       if (startIndex < 0) continue;
-      const direction = effect.direction || 'right';
+
+      // 炉石规则：两边都有随从时随机选方向，玩家不能选择
+      const hasLeft = startIndex > 0;
+      const hasRight = startIndex < board.length - 1;
+      let direction = effect.direction;
+      if (!direction || direction === 'random') {
+        if (hasLeft && hasRight) {
+          direction = Math.random() < 0.5 ? 'left' : 'right';
+        } else if (hasRight) {
+          direction = 'right';
+        } else if (hasLeft) {
+          direction = 'left';
+        } else {
+          direction = 'right'; // 只有目标自己
+        }
+      }
+      // 指定方向没有随从时自动换边（边缘目标）
+      if (direction === 'right' && !hasRight && hasLeft) direction = 'left';
+      if (direction === 'left' && !hasLeft && hasRight) direction = 'right';
+
+      const dirText = direction === 'left' ? '左侧' : '右侧';
       let amount = Math.max(1, Number(effect.amount) || 1);
       if (direction === 'left') {
         for (let index = startIndex; index >= 0; index -= 1) {
           dealMinionDamageSolo(null, actorSide, board[index], amount);
           amount += Number(effect.step) || 1;
         }
-        pushSoloLog('多米诺效应向目标左侧完成了递增伤害结算。');
       } else {
         for (let index = startIndex; index < board.length; index += 1) {
           dealMinionDamageSolo(null, actorSide, board[index], amount);
           amount += Number(effect.step) || 1;
         }
-        pushSoloLog('多米诺效应向目标右侧完成了递增伤害结算。');
       }
+      pushSoloLog(`多米诺效应沿${dirText}传播：2→${amount - Number(effect.step) || 1} 点递增伤害结算完成。`);
       processSoloDeaths(targetRef.side);
+      continue;
+    }
+
+    // ── 地标效果 ──────────────────────────────────────────
+
+    if (effect.type === 'locationPingBuff') {
+      const targetRef = resolveEffectTargetSolo(effect, actorSide, context);
+      const targetEntity = getTargetEntitySolo(targetRef);
+      if (!targetRef || !targetEntity) continue;
+      // 造成1点伤害
+      dealMinionDamageSolo(null, actorSide, targetEntity, Number(effect.damage) || 1);
+      // +2攻击
+      targetEntity.attack = (targetEntity.attack || 0) + (Number(effect.attackBuff) || 2);
+      pushSoloLog(`赤红深渊：${targetEntity.name || '随从'} 受到1点伤害，攻击力+${effect.attackBuff || 2}。`);
+      processSoloDeaths(targetRef.side);
+      continue;
+    }
+
+    if (effect.type === 'locationRandomDamage') {
+      const opponentSide = actorSide === 'player' ? 'boss' : 'player';
+      const enemyBoard = state.solo[opponentSide].board;
+      const enemyHero = state.solo[opponentSide];
+      const fireActive = state.solo[actorSide].playedFireSpellThisTurn;
+      const dmg = fireActive ? (Number(effect.fireAmount) || 6) : (Number(effect.baseAmount) || 3);
+      // 随机分配到敌方角色（英雄+随从）
+      const pool = [];
+      pool.push({ kind: 'hero', entity: enemyHero, label: enemyHero.heroName });
+      for (const m of enemyBoard) pool.push({ kind: 'minion', entity: m, label: m.name });
+      let remaining = dmg;
+      while (remaining > 0 && pool.length > 0) {
+        const idx = Math.floor(Math.random() * pool.length);
+        const target = pool[idx];
+        const hit = Math.min(remaining, target.entity.health || 99);
+        if (target.kind === 'hero') {
+          dealDamage(target.entity, hit);
+        } else {
+          dealMinionDamageSolo(null, actorSide, target.entity, hit);
+        }
+        remaining -= hit;
+        if (target.entity.health <= 0) pool.splice(idx, 1);
+      }
+      pushSoloLog(`喷发火山：随机对敌方造成 ${dmg} 点伤害${fireActive ? '（火焰法术强化）' : ''}。`);
+      processSoloDeaths(opponentSide);
+      continue;
+    }
+
+    // ── 发现效果（三选一） ──────────────────────────────
+
+    if (effect.type === 'discoverDragonWithDarkGift') {
+      const hero = state.solo[actorSide];
+      if (!hero.hand || hero.hand.length >= 10) continue;
+      const pool = effectiveCards.filter(c => c.enabled !== false && (c.tribes || []).includes('dragon'));
+      if (pool.length === 0) continue;
+      const options = generateDiscoverOptions(pool, 3);
+      const best = pickBestDiscover(options, state, actorSide);
+      if (best) {
+        hero.hand.push(best);
+        pushSoloLog(`${hero.heroName} 从3个龙中选择了 ${best.displayName}（攻${best.attack}/血${best.health}）。`);
+      }
+      continue;
+    }
+
+    if (effect.type === 'discoverWarriorWithDarkGift') {
+      const hero = state.solo[actorSide];
+      if (!hero.hand || hero.hand.length >= 10) continue;
+      const pool = effectiveCards.filter(c => c.enabled !== false && c.type === 'minion');
+      if (pool.length === 0) continue;
+      const options = generateDiscoverOptions(pool, 3);
+      const best = pickBestDiscover(options, state, actorSide);
+      if (best) {
+        hero.hand.push(best);
+        pushSoloLog(`${hero.heroName} 从3个战士随从中选择了 ${best.displayName}（攻${best.attack}/血${best.health}）。`);
+      }
+      continue;
+    }
+
+    if (effect.type === 'rewindableRandomWeapons') {
+      const hero = state.solo[actorSide];
+      const opponent = state.solo[actorSide === 'player' ? 'boss' : 'player'];
+      // 保存完整快照
+      const snap = {
+        heroWeapon: hero.weapon ? { ...hero.weapon } : null,
+        heroHealth: hero.health,
+        heroArmor: hero.armor,
+        oppWeapon: opponent.weapon ? { ...opponent.weapon } : null,
+      };
+      // 第一次随机
+      const wpn1 = rollRandomWeapon();
+      const wpn2 = rollRandomWeapon();
+      const buffedWpn = {
+        attack: wpn1.attack + (effect.buff?.attack || 1),
+        durability: wpn1.durability + (effect.buff?.durability || 1),
+      };
+      // AI 决定是否回溯：评估第一次结果
+      const ownValue = buffedWpn.attack * buffedWpn.durability * 0.65;
+      const oppValue = wpn2.attack * wpn2.durability * 0.72;
+      const oldOwnValue = (snap.heroWeapon ? snap.heroWeapon.attack * snap.heroWeapon.durability * 0.65 : 0);
+      const timelineValue = ownValue - oppValue - oldOwnValue;
+      // 如果第一次结果太差，回溯（重新随机）
+      if (timelineValue < -1.0) {
+        const newWpn1 = rollRandomWeapon();
+        const newWpn2 = rollRandomWeapon();
+        hero.weapon = {
+          attack: newWpn1.attack + (effect.buff?.attack || 1),
+          durability: newWpn1.durability + (effect.buff?.durability || 1),
+        };
+        opponent.weapon = { attack: newWpn2.attack, durability: newWpn2.durability };
+        pushSoloLog(`现场播报员：回溯！第一次 ${wpn1.attack}/${wpn1.durability} 不理想，重新随机 → 我方 ${hero.weapon.attack}/${hero.weapon.durability}，对手 ${opponent.weapon.attack}/${opponent.weapon.durability}。`);
+      } else {
+        hero.weapon = buffedWpn;
+        opponent.weapon = { attack: wpn2.attack, durability: wpn2.durability };
+        pushSoloLog(`现场播报员：我方 ${hero.weapon.attack}/${hero.weapon.durability}，对手 ${opponent.weapon.attack}/${opponent.weapon.durability}。`);
+      }
       continue;
     }
 
@@ -2758,13 +3124,142 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       continue;
     }
 
+    // ── 龙战新效果类型 ──────────────────────────────────────
+
+    if (effect.type === 'equipWeapon') {
+      const hero = state.solo[actorSide];
+      hero.weapon = { attack: Number(effect.attack) || 1, durability: Number(effect.durability) || 1 };
+      pushSoloLog(`${hero.heroName} 装备了 ${hero.weapon.attack}/${hero.weapon.durability} 武器。`);
+      continue;
+    }
+
+    if (effect.type === 'heroGainAttack') {
+      const hero = state.solo[actorSide];
+      hero.heroAttackThisTurn = (hero.heroAttackThisTurn || 0) + (Number(effect.amount) || 0);
+      pushSoloLog(`${hero.heroName} 在本回合中获得 +${Number(effect.amount) || 0} 攻击力。`);
+      continue;
+    }
+
+    if (effect.type === 'refreshMana') {
+      const hero = state.solo[actorSide];
+      const amount = Math.min(Number(effect.amount) || 0, hero.maxMana - hero.mana);
+      hero.mana += amount;
+      pushSoloLog(`${hero.heroName} 复原了 ${amount} 个法力水晶。`);
+      continue;
+    }
+
+    if (effect.type === 'overflowDamage') {
+      const targetRef = context.chosenTarget || resolveEffectTargetSolo(effect, actorSide, context);
+      const targetEntity = getTargetEntitySolo(targetRef);
+      if (!targetRef || !targetEntity) continue;
+      // 只能对受伤随从使用
+      if (targetEntity.maxHealth && targetEntity.health >= targetEntity.maxHealth) continue;
+      const dmg = Number(effect.amount) || 8;
+      const remaining = targetEntity.health;
+      dealMinionDamageSolo(null, actorSide, targetEntity, dmg);
+      pushSoloLog(`烈火炙烤对 ${targetEntity.name || describeTargetRefSolo(targetRef)} 造成 ${dmg} 点伤害。`);
+      // 溢出伤害回手
+      if (dmg > remaining) {
+        const overflow = dmg - remaining;
+        const hero = state.solo[actorSide];
+        if (hero.hand && hero.hand.length < 10) {
+          const searingCopy = {
+            ...effectiveCardById['dw-searing-flame'],
+            instanceId: uid('searing-return'),
+            cost: 1,
+            effects: [{ type: 'overflowDamage', target: 'playerChoice', targetKinds: ['minion'], targetCondition: 'damaged', amount: overflow }],
+          };
+          hero.hand.push(searingCopy);
+          pushSoloLog(`烈火炙烤溢出 ${overflow} 点伤害，回手一张新牌。`);
+        }
+      }
+      processSoloDeaths(targetRef.side);
+      continue;
+    }
+
+    if (effect.type === 'addRandomCard') {
+      const hero = state.solo[actorSide];
+      if (!hero.hand || hero.hand.length >= 10) continue;
+      // 从卡池中挑符合条件的龙
+      const poolCards = (effectiveCards || []).filter(c =>
+        c.enabled !== false && (c.tribes || []).includes(effect.tribe || 'dragon') &&
+        (!effect.maxCost || c.cost <= effect.maxCost)
+      );
+      if (poolCards.length > 0) {
+        const pick = poolCards[Math.floor(Math.random() * poolCards.length)];
+        hero.hand.push({ ...pick, instanceId: uid(`random-${pick.id}`) });
+        pushSoloLog(`${hero.heroName} 随机获得了一张 ${pick.name}。`);
+      }
+      continue;
+    }
+
+    if (effect.type === 'drawMinion') {
+      const hero = state.solo[actorSide];
+      if (!hero.deck || !hero.hand) continue;
+      for (let i = hero.deck.length - 1; i >= 0; i--) {
+        if (hero.deck[i].type === 'minion') {
+          const [drawn] = hero.deck.splice(i, 1);
+          if (hero.hand.length < 10) hero.hand.push(drawn);
+          pushSoloLog(`${hero.heroName} 抽了一张随从牌：${drawn.name}。`);
+          break;
+        }
+      }
+      continue;
+    }
+
+    if (effect.type === 'enrageAttackBuff') {
+      // 受伤时触发：格罗玛什
+      const sourceCard = context.sourceCard;
+      if (sourceCard && sourceCard.health < (sourceCard.maxHealth || sourceCard.health)) {
+        sourceCard.attack = (sourceCard.attack || 0) + (Number(effect.amount) || 6);
+        pushSoloLog(`${sourceCard.name} 受伤激怒，攻击力提升至 ${sourceCard.attack}。`);
+      }
+      // 持续检查：每次渲染时更新
+      continue;
+    }
+
+    // 永时困苦：造成1伤，存活抽牌，死亡召唤
+    if (effect.type === 'damageOrDrawOrSummon') {
+      const targetRef = context.chosenTarget || resolveEffectTargetSolo(effect, actorSide, context);
+      const targetEntity = getTargetEntitySolo(targetRef);
+      if (!targetRef || !targetEntity) continue;
+      const dmg = Number(effect.amount) || 1;
+      dealMinionDamageSolo(null, actorSide, targetEntity, dmg);
+      processSoloDeaths(targetRef.side);
+      const hero = state.solo[actorSide];
+      if (targetEntity.health > 0) {
+        // 存活：抽牌
+        if (hero.deck && hero.deck.length && hero.hand && hero.hand.length < 10) {
+          hero.hand.push(hero.deck.pop());
+          pushSoloLog(`永时困苦：目标存活，${hero.heroName} 抽了一张牌。`);
+        }
+      } else {
+        // 死亡：随机召唤1费随从
+        const oneCostMinions = (effectiveCards || []).filter(c => c.type === 'minion' && c.cost === 1 && c.enabled !== false);
+        if (oneCostMinions.length > 0 && hero.board && hero.board.length < 7) {
+          const pick = oneCostMinions[Math.floor(Math.random() * oneCostMinions.length)];
+          hero.board.push({ ...pick, instanceId: uid(`summon-${pick.id}`), side: actorSide, sleeping: true, canAttack: false });
+          pushSoloLog(`永时困苦：目标死亡，随机召唤了 ${pick.name}。`);
+        }
+      }
+      continue;
+    }
+
     if (effect.type === 'damage') {
+      const amount = Number(effect.amount) || 0;
+      // 全场随从伤害 (灼热裂隙)
+      if (effect.target === 'allMinions') {
+        for (const m of state.solo.player.board) dealMinionDamageSolo(null, actorSide, m, amount);
+        for (const m of state.solo.boss.board) dealMinionDamageSolo(null, actorSide, m, amount);
+        processSoloDeaths('player', 'boss');
+        pushSoloLog(`全场随从受到了 ${amount} 点伤害。`);
+        continue;
+      }
       const targetRef = resolveEffectTargetSolo(effect, actorSide, context);
       const targetEntity = getTargetEntitySolo(targetRef);
       if (!targetRef || !targetEntity) continue;
       context.primaryTarget = context.primaryTarget || targetRef;
       context.primaryTargets.damage = context.primaryTargets.damage || targetRef;
-      const amount = Number(effect.amount) || 0;
       if (targetRef.kind === 'hero') {
         dealDamage(targetEntity, amount);
         pushSoloLog(
@@ -2792,8 +3287,8 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       context.primaryTarget = context.primaryTarget || targetRef;
       context.primaryTargets.heal = context.primaryTargets.heal || targetRef;
       const healed = restoreHealth(targetEntity, Number(effect.amount) || 0);
-      if (targetRef.side === 'player' && healed > 0) {
-        ensureSoloRuntime('player').healthChangesThisTurn += 1;
+      if (targetRef.side === 'player' && targetRef.kind === 'hero' && healed > 0) {
+        recordPlayerHealthChangeSolo();
       }
       pushSoloLog(`${describeTargetRefSolo(targetRef)} 恢复了 ${healed} 点生命值。`);
       animator?.heal?.(getTargetAreaSolo(targetRef));
@@ -2848,7 +3343,6 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
           state.solo.player.hand.slice(handCountBefore).forEach((card) => { card.temporary = true; });
         }
         pushSoloLog(`你抽了 ${drawn} 张牌。`);
-        animator?.drawCard?.(elements.handCards);
       }
     }
   }
@@ -2924,10 +3418,6 @@ function resolveCardSolo(cardInstance, chosenDamageTarget = null) {
       sourceCard: cardInstance,
     });
   }
-
-  animator?.flingCard?.(`[data-card-id="${cardInstance.instanceId}"]`, {
-    to: elements.battlefieldZone,
-  });
 
   if (!checkSoloOutcome()) {
     renderSolo();
@@ -3184,39 +3674,56 @@ async function resolveEnemyTurnSolo() {
   renderSolo();
 
   animator?.turnBanner?.(`${state.solo.boss.heroName} 回合 ${state.solo.turn}`, { durationMs: 820 });
-  wakeBoard('boss');
-  await sleepSolo(420);
 
-  const script = getScriptForTurn(state.solo.turn);
-  applyBossScriptSolo(script);
-  renderSolo();
-
-  if (checkSoloOutcome()) return;
-
-  await sleepSolo(450);
-
-  for (const minion of [...state.solo.boss.board]) {
-    while (minion.canAttack && minion.health > 0) {
-      const target = pickEnemyAttackTargetSolo();
-      resolveMinionCombatSolo(minion, target.side, target.type, target.minionId);
-      renderSolo();
-      if (checkSoloOutcome()) return;
-      await sleepSolo(300);
+  // ── 龙战 AI 分支 ──────────────────────────────────────────
+  const scenario = getSoloScenario();
+  if (scenario.scenarioId === 'dragon-warrior') {
+    await resolveDragonWarriorBossTurn();
+  } else {
+    // 原有 boss 脚本逻辑
+    wakeBoard('boss');
+    await sleepSolo(420);
+    const script = getScriptForTurn(state.solo.turn);
+    applyBossScriptSolo(script);
+    renderSolo();
+    if (checkSoloOutcome()) return;
+    await sleepSolo(450);
+    for (const minion of [...state.solo.boss.board]) {
+      while (minion.canAttack && minion.health > 0) {
+        const target = pickEnemyAttackTargetSolo();
+        resolveMinionCombatSolo(minion, target.side, target.type, target.minionId);
+        renderSolo();
+        if (checkSoloOutcome()) return;
+        await sleepSolo(300);
+      }
     }
   }
+
+  if (checkSoloOutcome()) return;
 
   if (turnLimit && state.solo.turn >= turnLimit && state.solo.boss.health > 0) {
     markSoloDefeat(`${state.solo.boss.heroName} 拖过了第 ${turnLimit} 回合，你没能完成这场测试/挑战。`);
     return;
   }
 
+  // ── 下回合准备 ──────────────────────────────────────────
   state.solo.turn += 1;
   state.solo.player.maxMana = Math.min(10, state.solo.turn);
   state.solo.player.mana = state.solo.player.maxMana;
   state.solo.boss.maxMana = Math.min(10, state.solo.turn);
   state.solo.boss.mana = state.solo.boss.maxMana;
+  if (state.solo.boss.tribesPlayedThisTurn) {
+    state.solo.boss.tribesPlayedLastTurn = [...state.solo.boss.tribesPlayedThisTurn];
+    state.solo.boss.tribesPlayedThisTurn = [];
+  }
+  state.solo.boss.heroAttackThisTurn = 0;
+  state.solo.boss.heroAttackUsedThisTurn = false;
+  state.solo.boss.heroPowerUsed = false;
+  state.solo.boss.playedFireSpellThisTurn = false;
+  state.solo.boss.spellSchoolsPlayedThisTurn = [];
   wakeBoard('player');
   state.solo.phase = 'player';
+  state.solo.player.heroPowerUsed = false;
   const runtime = ensureSoloRuntime('player');
   runtime.selfDamageThisTurn = 0;
   runtime.damageTakenThisTurn = 0;
@@ -3231,11 +3738,336 @@ async function resolveEnemyTurnSolo() {
   const drawn = drawCards(1);
   if (drawn) {
     pushSoloLog(`回合开始，你抽了 ${drawn} 张牌。`);
-    animator?.drawCard?.(elements.handCards);
   }
   state.solo.busy = false;
   renderSolo();
   animator?.turnBanner?.(`你的回合 ${state.solo.turn}`, { durationMs: 760 });
+}
+
+// ── 黑暗之赐 / 随机武器 / 回溯 ──────────────────────────────
+
+const DARK_GIFTS = [
+  { id: 'fear', name: '醒来吧，恐惧', attackBuff: 3, keywords: ['lifesteal'] },
+  { id: 'wrapped', name: '裹得严实', healthBuff: 4, keywords: ['taunt'] },
+  { id: 'rested', name: '充分休息', attackBuff: 2, healthBuff: 2, keywords: ['elusive'] },
+  { id: 'sleepwalker', name: '梦游者', keywords: ['charge'] },
+  { id: 'harpy', name: '鹰身人之爪', keywords: ['divine_shield', 'windfury'] },
+  { id: 'lingering', name: '萦绕不去的恐惧', keywords: ['reborn'] },
+  { id: 'shortclaw', name: '短爪', costMod: -2, attackBuff: -2 },
+  { id: 'brutal', name: '粗暴唤醒', keywords: ['battlecry_twice'] },
+  { id: 'nightmare', name: '活体梦魇', description: '召唤时生成2/2复制' },
+  { id: 'dream', name: '美梦', attackBuff: 4, healthBuff: 5, description: '置入牌库顶' },
+];
+
+function generateDiscoverOptions(pool, count = 3) {
+  const shuffled = [...pool].sort(() => Math.random() - 0.5);
+  const options = [];
+  for (let i = 0; i < Math.min(count, shuffled.length); i++) {
+    const card = shuffled[i];
+    const gift = DARK_GIFTS[Math.floor(Math.random() * DARK_GIFTS.length)];
+    const modified = {
+      ...card,
+      instanceId: uid(`discover-${card.id}-${i}`),
+      darkGift: gift,
+      displayName: `${card.name} · ${gift.name}`,
+      attack: Math.max(0, (card.attack || 0) + (gift.attackBuff || 0)),
+      health: Math.max(1, (card.health || 1) + (gift.healthBuff || 0)),
+      cost: Math.max(0, (card.cost || 0) + (gift.costMod || 0)),
+      keywords: [...(card.keywords || []), ...(gift.keywords || [])],
+    };
+    options.push(modified);
+  }
+  return options;
+}
+
+function pickBestDiscover(options, state, bossSide) {
+  if (options.length === 0) return null;
+  const boss = state.solo[bossSide];
+  let best = options[0];
+  let bestScore = -Infinity;
+  for (const opt of options) {
+    let s = 0;
+    // 优先龙
+    if ((opt.tribes || []).includes('dragon')) s += 4;
+    // 优先能当回合打出的
+    if (opt.cost <= boss.mana) s += 3;
+    // 优先高血量（面对快攻）
+    s += (opt.health || 0) * 0.5;
+    // 优先强礼物
+    if ((opt.keywords || []).includes('lifesteal')) s += 3;
+    if ((opt.keywords || []).includes('taunt')) s += 2.5;
+    if ((opt.keywords || []).includes('charge')) s += 3;
+    if ((opt.keywords || []).includes('divine_shield') && (opt.keywords || []).includes('windfury')) s += 5;
+    if ((opt.keywords || []).includes('reborn')) s += 2;
+    if (s > bestScore) { bestScore = s; best = opt; }
+  }
+  return best;
+}
+
+function rollDarkGift() {
+  return DARK_GIFTS[Math.floor(Math.random() * DARK_GIFTS.length)];
+}
+
+const RANDOM_WEAPONS = [
+  { attack: 2, durability: 2 }, { attack: 3, durability: 2 }, { attack: 1, durability: 4 },
+  { attack: 4, durability: 1 }, { attack: 2, durability: 3 },
+];
+
+function rollRandomWeapon() {
+  return RANDOM_WEAPONS[Math.floor(Math.random() * RANDOM_WEAPONS.length)];
+}
+
+function takeBossSnapshot(boss) {
+  return {
+    health: boss.health, armor: boss.armor, mana: boss.mana,
+    hand: boss.hand.map(c => ({ ...c })), board: boss.board.map(m => ({ ...m })),
+    deck: [...(boss.deck || [])], weapon: boss.weapon ? { ...boss.weapon } : null,
+    locations: boss.locations.map(l => ({ ...l })),
+    heroPowerUsed: boss.heroPowerUsed,
+  };
+}
+
+function restoreBossSnapshot(boss, snap) {
+  boss.health = snap.health; boss.armor = snap.armor; boss.mana = snap.mana;
+  boss.hand = snap.hand.map(c => ({ ...c }));
+  boss.board = snap.board.map(m => ({ ...m }));
+  boss.deck = [...snap.deck];
+  boss.weapon = snap.weapon ? { ...snap.weapon } : null;
+  boss.locations = snap.locations.map(l => ({ ...l }));
+  boss.heroPowerUsed = snap.heroPowerUsed;
+}
+
+// ── 龙战 AI Boss 回合 ──────────────────────────────────────────
+async function resolveDragonWarriorBossTurn() {
+  const boss = state.solo.boss;
+
+  // 回合开始：抽牌、加费、唤醒
+  boss.maxMana = Math.min(10, state.solo.turn);
+  boss.mana = boss.maxMana;
+  if (boss.deck.length && boss.hand.length < 10) {
+    const drawn = boss.deck.pop();
+    boss.hand.push(drawn);
+    _enemyNewlyDrawn.add(drawn.instanceId);
+  }
+  wakeBoard('boss');
+  renderSolo();
+  await sleepSolo(400);
+
+  // 重置地标冷却
+  for (const loc of boss.locations) loc.usedThisTurn = false;
+
+  // AI 决策 — 逐动作规划
+  const plan = decideDragonWarriorTurn(state, 'player', 'boss', getSoloScenario().boss?.heroPower || null);
+  if (!plan || plan.length === 0) return;
+
+  // 输出 AI 候选推理
+  if (plan.length > 0 && plan[0]._candidates) {
+    const top = plan[0]._candidates;
+    pushSoloLog(`AI 候选: ${top.map(c=>`${c.action}[${c.score}]`).join(' | ')}`);
+  }
+
+  for (const action of plan) {
+    if (checkSoloOutcome()) return;
+
+    if (action.type === 'endTurn') break;
+    if (!action.type) continue;
+
+    switch (action.type) {
+      case 'play': {
+        const card = action.card;
+        if (!card) break;
+        // 计算 boss 卡牌的实际费用（含减费）
+        let cost = card.cost;
+        if (card.costModifier) {
+          const mod = card.costModifier;
+          if (mod.rule === 'holdingAnotherDragon') {
+            const hasOther = boss.hand.some(c => c.instanceId !== card.instanceId && (c.tribes || []).includes('dragon'));
+            if (hasOther) cost = Math.max(mod.minimum || 0, cost - (mod.amount || 0));
+          } else if (mod.rule === 'kindredDragon') {
+            if ((boss.tribesPlayedLastTurn || []).includes('dragon')) {
+              cost = Math.max(mod.minimum || 0, cost - (mod.amount || 0));
+            }
+          }
+        }
+        if (boss.mana < cost) break;
+
+        boss.mana -= cost;
+        boss.hand = boss.hand.filter(c => c.instanceId !== card.instanceId);
+
+        // 追踪龙/法术打出
+        if ((card.tribes || []).includes('dragon')) {
+          boss.tribesPlayedThisTurn.push('dragon');
+        }
+        if (card.spellSchool) {
+          boss.spellSchoolsPlayedThisTurn.push(card.spellSchool);
+          if (card.spellSchool === 'fire') boss.playedFireSpellThisTurn = true;
+        }
+
+        if (card.type === 'location') {
+          const loc = {
+            instanceId: uid(`loc-${card.id}`),
+            sourceId: card.id,
+            name: card.name,
+            durability: card.durability || 3,
+            maxDurability: card.durability || 3,
+            effects: card.effects || [],
+            usedThisTurn: false,
+          };
+          boss.locations.push(loc);
+          pushSoloLog(`${boss.heroName} 打出了地标 ${card.name}（${loc.durability} 耐久）。`);
+        } else if (card.type === 'minion') {
+          boss.board.push({
+            ...card,
+            side: 'boss',
+            maxHealth: card.health,
+            sleeping: !(card.keywords || []).includes('charge'),
+            canAttack: (card.keywords || []).includes('charge') || (card.keywords || []).includes('rush'),
+            rushOnly: (card.keywords || []).includes('rush'),
+            divineShield: false,
+          });
+          pushSoloLog(`${boss.heroName} 打出了 ${card.name}。`);
+          // 战吼效果
+          applyEffectsSolo(card.effects.filter(e => e.trigger === 'battlecry' || !e.trigger), 'boss', {
+            primaryTarget: null, primaryTargets: {},
+            chosenTarget: action.target, trigger: 'battlecry', sourceCard: card,
+          });
+        } else {
+          pushSoloLog(`${boss.heroName} 施放了 ${card.name}。`);
+          applyEffectsSolo(card.effects, 'boss', {
+            primaryTarget: null, primaryTargets: {},
+            chosenTarget: action.target, trigger: 'onPlay', sourceCard: card,
+          });
+        }
+        break;
+      }
+
+      case 'attack': {
+        if (!action.attacker || !action.attacker.canAttack) break;
+        if (action.target === 'face') {
+          const atk = action.attacker.attack;
+          dealDamage(state.solo.player, atk);
+          consumeMinionAttack(action.attacker);
+          pushSoloLog(`${action.attacker.name} 攻击了你的英雄，造成 ${atk} 点伤害。`);
+        } else if (action.target?.health > 0) {
+          resolveMinionCombatSolo(action.attacker, 'boss', 'player', action.target.instanceId);
+        }
+        break;
+      }
+
+      case 'heroAttack': {
+        if (boss.heroAttackUsedThisTurn) break;
+        const heroAtk = Math.max(boss.heroAttackThisTurn, (boss.weapon?.durability > 0 ? boss.weapon.attack : 0));
+        if (heroAtk <= 0) break;
+        if (action.target === 'face') {
+          dealDamage(state.solo.player, heroAtk);
+          boss.heroAttackUsedThisTurn = true;
+          animateWeaponSwing('enemy');
+          if (boss.weapon?.durability > 0) {
+            boss.weapon.durability--;
+            if (boss.weapon.durability <= 0) boss.weapon = null;
+          }
+          pushSoloLog(`${boss.heroName} 用武器攻击了你的英雄，造成 ${heroAtk} 点伤害。`);
+        }
+        break;
+      }
+
+      case 'heroPower': {
+        const power = getSoloScenario().boss?.heroPower;
+        if (!power || boss.heroPowerUsed || boss.mana < (power.cost || 2)) break;
+        boss.mana -= (power.cost || 2);
+        boss.heroPowerUsed = true;
+        pushSoloLog(`${boss.heroName} 使用了英雄技能：${power.name}。`);
+        applyEffectsSolo(power.effects, 'boss', {
+          primaryTarget: null, primaryTargets: {}, chosenTarget: null,
+          trigger: 'onPlay', sourceCard: null,
+        });
+        break;
+      }
+
+      case 'location': {
+        const loc = action.location;
+        if (!loc || loc.durability <= 0 || loc.usedThisTurn) break;
+        // 执行地标效果
+        if (loc.sourceId === 'dw-crimson-abyss') {
+          const target = action.target;
+          if (!target || target.health <= 0) break;
+          dealMinionDamageSolo(null, 'boss', target, 1);
+          target.attack = (target.attack || 0) + 2;
+          pushSoloLog(`赤红深渊：对 ${target.name} 造成1点伤害，攻击力+2。`);
+          processSoloDeaths(target.side || 'boss');
+        } else if (loc.sourceId === 'dw-erupting-volcano') {
+          const fireActive = boss.playedFireSpellThisTurn;
+          const perShot = fireActive ? 6 : 3;
+          const targets = [];
+          targets.push({ kind: 'hero', entity: state.solo.player });
+          for (const m of state.solo.player.board) targets.push({ kind: 'minion', entity: m });
+          let remaining = perShot;
+          while (remaining > 0 && targets.length > 0) {
+            const idx = Math.floor(Math.random() * targets.length);
+            const t = targets[idx];
+            const hit = Math.min(remaining, t.entity.health || 99);
+            if (t.kind === 'hero') dealDamage(t.entity, hit);
+            else dealMinionDamageSolo(null, 'boss', t.entity, hit);
+            remaining -= hit;
+            if (t.entity.health <= 0) targets.splice(idx, 1);
+          }
+          pushSoloLog(`喷发火山：随机对敌方造成 ${perShot} 点伤害${fireActive ? '（火焰强化）' : ''}。`);
+          processSoloDeaths('player');
+        }
+        loc.durability--;
+        loc.usedThisTurn = true;
+        if (loc.durability <= 0) {
+          boss.locations = boss.locations.filter(l => l.instanceId !== loc.instanceId);
+          pushSoloLog(`${loc.name} 耐久耗尽，已移除。`);
+        }
+        break;
+      }
+
+      case 'endTurn':
+        break;
+    }
+
+    renderSolo();
+    await sleepSolo(250);
+  }
+
+  // 回合结束：鲜花商贩 buff
+  const flowerVendor = boss.board.find(m => m.sourceId === 'dw-flower-vendor');
+  if (flowerVendor) {
+    const otherDragons = boss.board.filter(m => m.instanceId !== flowerVendor.instanceId && (m.tribes || []).includes('dragon'));
+    if (otherDragons.length > 0) {
+      const target = otherDragons[Math.floor(Math.random() * otherDragons.length)];
+      target.attack = (target.attack || 0) + 1;
+      target.health += 1;
+      if (!target.maxHealth) target.maxHealth = target.health;
+      else target.maxHealth += 1;
+      pushSoloLog(`鲜花商贩使 ${target.name} 获得+1/+1。`);
+    }
+  }
+
+  // 回合结束：AI 未使用的剩余攻击 → 自动打脸
+  for (const minion of [...boss.board]) {
+    if (minion.canAttack && minion.health > 0 && !checkSoloOutcome()) {
+      dealDamage(state.solo.player, minion.attack);
+      consumeMinionAttack(minion);
+      pushSoloLog(`${minion.name} 攻击了你的英雄，造成 ${minion.attack} 点伤害。`);
+      renderSolo();
+      await sleepSolo(200);
+    }
+  }
+  // 英雄攻击（如果还有）
+  if (!boss.heroAttackUsedThisTurn) {
+    const heroAtk = Math.max(boss.heroAttackThisTurn || 0, boss.weapon?.attack || 0);
+    if (heroAtk > 0) {
+      dealDamage(state.solo.player, heroAtk);
+      boss.heroAttackUsedThisTurn = true;
+      animateWeaponSwing('enemy');
+      if (boss.weapon) { boss.weapon.durability--; if (boss.weapon.durability <= 0) boss.weapon = null; }
+      pushSoloLog(`${boss.heroName} 用剩余攻击打了你的英雄，造成 ${heroAtk} 点伤害。`);
+      renderSolo();
+      await sleepSolo(200);
+    }
+  }
 }
 
 function pushSoloLog(text) {
@@ -3282,7 +4114,296 @@ function playerCanPlaySolo(card) {
   if (state.solo.phase !== 'player' || state.solo.busy || isSoloGameOver()) return false;
   if (getEffectiveCardCostSolo(card) > state.solo.player.mana) return false;
   if (card.type === 'minion' && state.solo.player.board.length >= getSoloScenario().player.maxBoardSize) return false;
+
+  // 亡者复生等：如果本局没有友方随从死亡则禁用
+  const hasRaiseDead = (card.effects || []).some((e) => e.type === 'returnDeadFriendlyMinions');
+  if (hasRaiseDead) {
+    const runtime = ensureSoloRuntime('player');
+    if (!runtime || !runtime.deadFriendlyMinions || runtime.deadFriendlyMinions.length === 0) {
+      return false;
+    }
+  }
+
+  // 指向性法术：场上没有随从时禁止释放（只限「仅能指向随从」的牌）
+  if (cardOnlyTargetsMinionsSolo(card)) {
+    const totalMinions = state.solo.player.board.length + state.solo.boss.board.length;
+    if (totalMinions === 0) return false;
+  }
+
   return true;
+}
+
+function cardOnlyTargetsMinionsSolo(card) {
+  const walk = (effects) =>
+    (effects || []).every((effect) => {
+      if (effect.type === 'conditional') return walk(effect.effects || []);
+      // 不需要显式目标的类型 — 不影响禁用逻辑
+      if (!effectNeedsExplicitTargetSolo(effect)) return true;
+      // 有 targetKinds 且只包含 minion → 只能指随从
+      if (effect.targetKinds && Array.isArray(effect.targetKinds) && effect.targetKinds.length > 0) {
+        return effect.targetKinds.every((k) => k === 'minion');
+      }
+      // 明确指向随从的目标类型
+      if (effect.target === 'enemyMinion' || effect.target === 'friendlyMinion') return true;
+      // playerChoice 但没有 targetKinds → 可以指向英雄或随从 → 不禁用
+      if (effect.target === 'playerChoice' && (!effect.targetKinds || effect.targetKinds.length === 0)) {
+        return false;
+      }
+      return true;
+    });
+  // 至少有一个 effect 需要显式目标才算指向性牌
+  const needsTarget = (card.effects || []).some((e) => {
+    if (e.type === 'conditional') return (e.effects || []).some((ne) => effectNeedsExplicitTargetSolo(ne));
+    return effectNeedsExplicitTargetSolo(e);
+  });
+  if (!needsTarget) return false;
+  return walk(card.effects);
+}
+
+// ── 英雄技能 ──────────────────────────────────────────────────
+
+function getHeroPowerCostSolo() {
+  const runtime = ensureSoloRuntime('player');
+  if (runtime?.nextHeroPowerCost !== undefined && runtime.nextHeroPowerCost !== null) {
+    return Math.max(0, Number(runtime.nextHeroPowerCost));
+  }
+  const scenario = getSoloScenario();
+  return Math.max(0, Number(scenario.player?.heroPower?.cost) || 2);
+}
+
+function usePlayerHeroPowerSolo() {
+  if (state.mode !== 'solo') return;
+  if (state.solo.phase !== 'player' || state.solo.busy) return;
+  if (state.solo.player.heroPowerUsed) return;
+
+  const scenario = getSoloScenario();
+  const power = scenario.player?.heroPower;
+  if (!power) return;
+
+  const cost = getHeroPowerCostSolo();
+  if (state.solo.player.mana < cost) return;
+
+  state.solo.player.mana -= cost;
+  state.solo.player.heroPowerUsed = true;
+
+  // 消耗巡游向导给予的减费效果
+  const runtime = ensureSoloRuntime('player');
+  if (runtime?.nextHeroPowerCost !== undefined) {
+    runtime.nextHeroPowerCost = undefined;
+  }
+
+  animator?.pulseStat?.(elements.playerMana);
+  pushSoloLog(`你使用了英雄技能：${power.name}。`);
+
+  // 翻转动画
+  const btn = document.getElementById('hero-power-btn');
+  if (btn) btn.classList.add('is-used');
+
+  applyEffectsSolo(power.effects, 'player', {
+    primaryTarget: null,
+    primaryTargets: {},
+    chosenTarget: null,
+    trigger: 'onPlay',
+    sourceCard: null,
+  });
+
+  if (!checkSoloOutcome()) {
+    renderSolo();
+  }
+}
+
+function renderHeroPowerSolo() {
+  const btn = document.getElementById('hero-power-btn');
+  if (!btn) return;
+  const scenario = getSoloScenario();
+  const power = scenario.player?.heroPower;
+  if (!power) {
+    btn.style.display = 'none';
+    return;
+  }
+
+  btn.style.display = '';
+  const cost = getHeroPowerCostSolo();
+  const baseCost = Number(power.cost) || 2;
+  const canUse =
+    state.solo.phase === 'player' &&
+    !state.solo.busy &&
+    !state.solo.player.heroPowerUsed &&
+    state.solo.player.mana >= cost &&
+    !isSoloGameOver();
+
+  const costEl = btn.querySelector('.hero-power-btn__cost');
+  if (costEl) {
+    costEl.textContent = cost;
+    // 费用为 0 时高亮显示
+    costEl.classList.toggle('is-discounted', cost === 0 && cost < baseCost);
+  }
+
+  btn.disabled = !canUse;
+  btn.classList.toggle('is-locked', !canUse && !state.solo.player.heroPowerUsed);
+
+  if (!state.solo.player.heroPowerUsed) {
+    btn.classList.remove('is-used');
+  }
+  btn.setAttribute('aria-label', `${power.name} — ${power.text}`);
+}
+
+// ── 武器渲染 ──────────────────────────────────────────────
+
+const _prevPlayerWeapon = { key: '' };
+const _prevEnemyWeapon = { key: '' };
+
+function renderWeaponSlotsSolo() {
+  const playerWpn = state.solo.player?.weapon;
+  const enemyWpn = state.solo.boss?.weapon;
+
+  // 玩家武器
+  updateWeaponSlot(elements.playerWeapon, elements.playerWeaponAtk, elements.playerWeaponDur,
+    playerWpn, _prevPlayerWeapon, 'player');
+  // 敌方武器
+  updateWeaponSlot(elements.enemyWeapon, elements.enemyWeaponAtk, elements.enemyWeaponDur,
+    enemyWpn, _prevEnemyWeapon, 'enemy');
+}
+
+function updateWeaponSlot(slotEl, atkEl, durEl, weapon, prev, side) {
+  if (!slotEl) return;
+  const key = weapon ? `${weapon.attack}/${weapon.durability}` : '';
+
+  if (key && key !== prev.key) {
+    // 新装备或武器变化 → 装备动画
+    slotEl.style.display = '';
+    slotEl.dataset.side = side;
+    atkEl.textContent = weapon.attack;
+    durEl.textContent = weapon.durability;
+    slotEl.classList.remove('anim-weapon-swing', 'anim-weapon-break');
+    slotEl.classList.add('anim-weapon-equip');
+    slotEl.addEventListener('animationend', () => slotEl.classList.remove('anim-weapon-equip'), { once: true });
+  } else if (key && key === prev.key) {
+    // 武器未变，更新耐久显示
+    atkEl.textContent = weapon.attack;
+    durEl.textContent = weapon.durability;
+  } else if (!key && prev.key) {
+    // 武器消失 → 破碎动画
+    slotEl.classList.remove('anim-weapon-equip', 'anim-weapon-swing');
+    slotEl.classList.add('anim-weapon-break');
+    slotEl.addEventListener('animationend', () => {
+      slotEl.classList.remove('anim-weapon-break');
+      slotEl.style.display = 'none';
+    }, { once: true });
+  } else {
+    slotEl.style.display = 'none';
+  }
+
+  prev.key = key;
+}
+
+// 触发攻击挥砍动画 (由 heroAttack 调用)
+function animateWeaponSwing(side) {
+  const slot = side === 'player' ? elements.playerWeapon : elements.enemyWeapon;
+  if (!slot || slot.style.display === 'none') return;
+  slot.classList.remove('anim-weapon-equip', 'anim-weapon-break');
+  slot.classList.add('anim-weapon-swing');
+  slot.addEventListener('animationend', () => slot.classList.remove('anim-weapon-swing'), { once: true });
+}
+
+// ── 敌方手牌渲染（龙战等 boss 专用） ──────────────────────────
+
+const _enemyHandDomIds = new Set();
+let _enemyNewlyDrawn = new Set();
+
+function renderEnemyHandSolo() {
+  const scenario = getSoloScenario();
+  const zone = elements.enemyHandZone;
+  const container = elements.enemyHandCards;
+  const deckEl = elements.enemyDeckStack;
+  const deckCountEl = elements.enemyDeckCount;
+  const hintEl = elements.enemyHandCountHint;
+  if (!zone || !container) return;
+
+  const isDW = scenario.scenarioId === 'dragon-warrior';
+  const boss = state.solo.boss;
+  const hasHand = isDW && boss.hand !== undefined;
+
+  zone.style.display = hasHand ? '' : 'none';
+  if (!hasHand) return;
+
+  const hand = boss.hand || [];
+  const handIds = new Set(hand.map(c => c.instanceId));
+
+  // 更新牌库数量
+  if (deckEl && deckCountEl) {
+    const deckCount = (boss.deck || []).length;
+    deckCountEl.textContent = deckCount;
+    deckEl.classList.toggle('is-empty', deckCount === 0);
+    deckEl.style.display = '';
+  }
+  // 敌方手牌保持炉石式紧凑表现：这里只显示未知手牌数量。
+  if (hintEl) {
+    hintEl.textContent = `×${hand.length}`;
+    hintEl.setAttribute('aria-label', `敌方手牌 ${hand.length} 张`);
+  }
+
+  // 移除已打出的手牌
+  const existingIds = new Set();
+  for (const el of [...container.children]) {
+    const id = el.dataset?.enemyCardId;
+    if (id && !handIds.has(id)) {
+      el.remove();
+      _enemyHandDomIds.delete(id);
+    } else if (id) {
+      existingIds.add(id);
+    }
+  }
+
+  // 追加新抽的牌（增量）
+  let newCards = false;
+  for (const card of hand) {
+    if (!_enemyHandDomIds.has(card.instanceId)) {
+      const el = document.createElement('div');
+      el.className = 'enemy-hand-card';
+      el.dataset.enemyCardId = card.instanceId;
+      el.setAttribute('aria-label', '敌方手牌，背面朝上');
+      container.appendChild(el);
+      _enemyHandDomIds.add(card.instanceId);
+      _enemyNewlyDrawn.add(card.instanceId);
+      newCards = true;
+    }
+  }
+
+  // 抽牌动画
+  if (newCards) {
+    animateEnemyCardDraws();
+  }
+
+  // 牌库空时显示
+  if (deckEl) deckEl.style.display = boss.deck && boss.deck.length >= 0 ? '' : 'none';
+}
+
+function animateEnemyCardDraws() {
+  if (_enemyNewlyDrawn.size === 0) return;
+  const deckEl = elements.enemyDeckStack;
+  const deckRect = deckEl?.getBoundingClientRect();
+  let stagger = 0;
+  for (const cardId of _enemyNewlyDrawn) {
+    const cardEl = document.querySelector(`[data-enemy-card-id="${cardId}"]`);
+    if (cardEl && deckRect) {
+      const cardRect = cardEl.getBoundingClientRect();
+      const dx = deckRect.left - cardRect.left;
+      const dy = deckRect.top - cardRect.top;
+      cardEl.style.setProperty('--flip-from-x', `${dx}px`);
+      cardEl.style.setProperty('--flip-from-y', `${dy}px`);
+      cardEl.style.animationDelay = `${stagger}ms`;
+      cardEl.classList.add('anim-card-flip-in');
+      cardEl.addEventListener('animationend', () => {
+        cardEl.classList.remove('anim-card-flip-in');
+        cardEl.style.removeProperty('--flip-from-x');
+        cardEl.style.removeProperty('--flip-from-y');
+        cardEl.style.animationDelay = '';
+      }, { once: true });
+      stagger += 80;
+    }
+  }
+  _enemyNewlyDrawn.clear();
 }
 
 // ============================================
@@ -3298,7 +4419,9 @@ function getEffectiveCardCostPvp(card) {
   let progress = 0;
   if (modifier.rule === 'missingHealth') progress = Math.max(0, 30 - (player.health || 0));
   if (modifier.rule === 'selfDamageThisGame') progress = runtime.selfDamageThisGame || 0;
-  if (modifier.rule === 'healthChangedThisTurn') progress = runtime.healthChangesThisTurn || 0;
+  if (modifier.rule === 'healthChangedThisTurn' || modifier.rule === 'healthChangedThisGame') {
+    progress = runtime.healthChangesThisGame ?? runtime.healthChangesThisTurn ?? 0;
+  }
   return Math.max(Number(modifier.minimum) || 0, baseCost - progress * (Number(modifier.amountPer) || 1));
 }
 
@@ -3429,6 +4552,13 @@ function renderManaCrystals(container, current, max, tempCount = 0) {
   container.innerHTML = html;
 }
 
+function renderArmorPill(element, value) {
+  if (!element) return;
+  const armor = Math.max(0, Number(value) || 0);
+  element.textContent = armor;
+  element.hidden = armor === 0;
+}
+
 function floatCombatText(x, y, value, type = 'damage') {
   const layer = elements.combatTextLayer;
   if (!layer) return;
@@ -3443,7 +4573,11 @@ function floatCombatText(x, y, value, type = 'damage') {
 
 function floatCombatTextOnTarget(targetEl, value, type = 'damage') {
   if (!targetEl) return;
-  const rect = targetEl.getBoundingClientRect();
+  // 支持传入 CSS 选择器字符串
+  const el = typeof targetEl === 'string' ? document.querySelector(targetEl) : targetEl;
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  if (!rect) return;
   const x = rect.left + rect.width / 2 - 18 + (Math.random() - 0.5) * 20;
   const y = rect.top - 4;
   floatCombatText(x, y, value, type);
@@ -3472,6 +4606,9 @@ function renderSolo() {
 
   renderStatusSolo();
   renderHeroPanelsSolo();
+  renderHeroPowerSolo();
+  renderWeaponSlotsSolo();
+  renderEnemyHandSolo();
   renderBoardSolo();
   renderHandSolo();
   animateCardDraws();
@@ -3524,9 +4661,9 @@ function renderHeroPanelsSolo() {
     ? `${state.solo.boss.heroName} 已被击败。`
     : state.solo.phase === 'lost'
       ? `${state.solo.boss.heroName} 守住了这张桌子。`
-      : `下一手：${nextMove}`;
+      : nextMove ? `下一手：${nextMove}` : state.solo.boss.heroName;
   elements.enemyHealth.textContent = Math.max(0, state.solo.boss.health);
-  elements.enemyArmor.textContent = Math.max(0, state.solo.boss.armor);
+  renderArmorPill(elements.enemyArmor, state.solo.boss.armor);
   renderManaCrystals(elements.enemyManaCrystals, state.solo.boss.mana, state.solo.boss.maxMana);
 
   elements.playerHeroName.textContent = state.solo.player.heroName;
@@ -3539,7 +4676,7 @@ function renderHeroPanelsSolo() {
     : '';
   elements.playerHeroNote.textContent = `牌库 ${state.solo.player.deck.length} 张 · 手牌 ${state.solo.player.hand.length} 张 · 本局自伤 ${runtime.selfDamageThisGame}${questLabel}`;
   elements.playerHealth.textContent = Math.max(0, state.solo.player.health);
-  elements.playerArmor.textContent = Math.max(0, state.solo.player.armor);
+  renderArmorPill(elements.playerArmor, state.solo.player.armor);
   renderManaCrystals(elements.playerManaCrystals, state.solo.player.mana, state.solo.player.maxMana);
   updateDeckDisplay(state.solo.player.deck.length);
 
@@ -3644,13 +4781,76 @@ function buildHandCardHTML(card) {
   `;
 }
 
+// 手牌增量渲染 — 只追加新卡、移除已出卡、原地更新状态
+const _handDomIds = new Set();
+const _exitingCards = new WeakSet();
+
 function renderHandSolo() {
-  // 短暂隐藏避免 innerHTML 重建时闪烁
-  elements.handCards.style.visibility = 'hidden';
-  elements.handCards.innerHTML = state.solo.player.hand.map(buildHandCardHTML).join('');
-  requestAnimationFrame(() => {
-    elements.handCards.style.visibility = '';
-  });
+  const container = elements.handCards;
+  const handIds = new Set(state.solo.player.hand.map(c => c.instanceId));
+
+  // 1. 处理不在手牌中的卡 — 播放退出动画后延迟移除
+  for (const el of [...container.children]) {
+    const id = el.dataset?.cardId;
+    if (id && !handIds.has(id) && !_exitingCards.has(el)) {
+      // 本局手牌架只允许因更高的新卡扩展，不会因打出一张长文字卡而回缩。
+      // 这样下方按钮区也不会在出牌完成时向上跳动。
+      const currentTrackHeight = container.getBoundingClientRect().height;
+      const lockedTrackHeight = Number.parseFloat(container.style.minHeight) || 0;
+      if (currentTrackHeight > lockedTrackHeight) {
+        container.style.minHeight = `${currentTrackHeight}px`;
+      }
+      _exitingCards.add(el);
+      _handDomIds.delete(id);
+      el.style.pointerEvents = 'none';
+
+      // 下一帧再收拢，确保浏览器能从卡牌当前尺寸平滑过渡。
+      // 不再对原手牌播放纵向 fling，避免“先下后上”的视觉抖动。
+      requestAnimationFrame(() => {
+        if (!el.parentNode) return;
+        // 收缩宽度前锁住卡牌高度。否则文字会在过渡中被挤成细长的多行，
+        // 短暂撑高整个手牌轨道，造成“手牌区突然向下拉长”的抖动。
+        const exitHeight = el.getBoundingClientRect().height;
+        el.style.setProperty('--hand-card-exit-height', `${exitHeight}px`);
+        el.classList.add('is-exiting');
+        // 等 flex-basis 折叠过渡结束后从 DOM 移除
+        const onDone = (e) => {
+          if (e.propertyName !== 'flex-basis') return;
+          el.removeEventListener('transitionend', onDone);
+          if (el.parentNode) el.remove();
+        };
+        el.addEventListener('transitionend', onDone);
+        // fallback: 超时兜底清理
+        setTimeout(() => {
+          if (el.parentNode) {
+            el.removeEventListener('transitionend', onDone);
+            el.remove();
+          }
+        }, 400);
+      });
+    }
+  }
+
+  // 2. 追加新卡 / 原地更新已有卡
+  for (const card of state.solo.player.hand) {
+    if (_handDomIds.has(card.instanceId)) {
+      // 已有 — 只更新费用和可玩状态
+      const el = container.querySelector(`[data-card-id="${card.instanceId}"]`);
+      if (el) {
+        const playable = playerCanPlaySolo(card);
+        const cost = getEffectiveCardCostSolo(card);
+        const pending = state.solo.pendingSpellId === card.instanceId;
+        el.className = `game-card ${playable ? 'is-playable' : 'is-locked'} ${pending ? 'is-selected' : ''}`;
+        if (playable) el.removeAttribute('disabled'); else el.setAttribute('disabled', '');
+        const costEl = el.querySelector('.game-card__cost');
+        if (costEl) costEl.textContent = cost;
+      }
+    } else {
+      // 新卡 — 追加到 DOM
+      container.insertAdjacentHTML('beforeend', buildHandCardHTML(card));
+      _handDomIds.add(card.instanceId);
+    }
+  }
 }
 
 function renderLogSolo() {
@@ -3714,14 +4914,14 @@ function renderHeroPanelsPvP() {
   elements.enemyHeroName.textContent = state.pvp.opponent.heroName;
   elements.enemyHeroNote.textContent = isMyTurn ? '你的回合，轮到你行动。' : '等待对手行动...';
   elements.enemyHealth.textContent = Math.max(0, state.pvp.opponent.health);
-  elements.enemyArmor.textContent = Math.max(0, state.pvp.opponent.armor);
+  renderArmorPill(elements.enemyArmor, state.pvp.opponent.armor);
   renderManaCrystals(elements.enemyManaCrystals, state.pvp.opponent.mana, state.pvp.opponent.maxMana);
 
   // 我的信息 (player)
   elements.playerHeroName.textContent = state.pvp.player.heroName;
   elements.playerHeroNote.textContent = `牌库 ${getVisibleDeckCount(state.pvp.player)} 张 · 手牌 ${state.pvp.player.hand.length} 张`;
   elements.playerHealth.textContent = Math.max(0, state.pvp.player.health);
-  elements.playerArmor.textContent = Math.max(0, state.pvp.player.armor);
+  renderArmorPill(elements.playerArmor, state.pvp.player.armor);
   renderManaCrystals(elements.playerManaCrystals, state.pvp.player.mana, state.pvp.player.maxMana);
   updateDeckDisplay(state.pvp.player.deck?.length || 0);
 
@@ -4000,6 +5200,16 @@ function setupEventHandlers() {
       pvpEndTurn();
     }
   });
+
+  // 英雄技能按钮
+  const heroPowerBtn = document.getElementById('hero-power-btn');
+  if (heroPowerBtn) {
+    heroPowerBtn.addEventListener('click', () => {
+      if (state.mode === 'solo') {
+        usePlayerHeroPowerSolo();
+      }
+    });
+  }
 
   // 重新开始按钮
   elements.restartButton.addEventListener('click', () => {

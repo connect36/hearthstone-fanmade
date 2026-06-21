@@ -126,7 +126,7 @@ export class GameEngine {
         deck: player1Deck,
         hand: [],
         board: [],
-        runtime: { selfDamageThisTurn: 0, selfDamageThisGame: 0, damageTakenThisTurn: 0, healthChangesThisTurn: 0, questline: null, redirectSelfDamage: false, delayedDamage: [], graveyard: [], spellTax: 0, spellTaxTurns: 0 }
+        runtime: { selfDamageThisTurn: 0, selfDamageThisGame: 0, damageTakenThisTurn: 0, healthChangesThisTurn: 0, healthChangesThisGame: 0, questline: null, redirectSelfDamage: false, delayedDamage: [], graveyard: [], spellTax: 0, spellTaxTurns: 0 }
       },
 
       player2: {
@@ -139,7 +139,7 @@ export class GameEngine {
         deck: player2Deck,
         hand: [],
         board: [],
-        runtime: { selfDamageThisTurn: 0, selfDamageThisGame: 0, damageTakenThisTurn: 0, healthChangesThisTurn: 0, questline: null, redirectSelfDamage: false, delayedDamage: [], graveyard: [], spellTax: 0, spellTaxTurns: 0 }
+        runtime: { selfDamageThisTurn: 0, selfDamageThisGame: 0, damageTakenThisTurn: 0, healthChangesThisTurn: 0, healthChangesThisGame: 0, questline: null, redirectSelfDamage: false, delayedDamage: [], graveyard: [], spellTax: 0, spellTaxTurns: 0 }
       },
 
       actionLog: [],
@@ -353,7 +353,15 @@ export class GameEngine {
     const maxHealth = hero.maxHealth || 30;
     const before = hero.health;
     hero.health = Math.min(maxHealth, hero.health + amount);
-    return hero.health - before;
+    const restored = hero.health - before;
+    if (restored > 0) this.recordHeroHealthChange(state, hero);
+    return restored;
+  }
+
+  recordHeroHealthChange(state, hero) {
+    if (!hero?.runtime || hero.socketId !== state.activePlayerId) return;
+    hero.runtime.healthChangesThisTurn = (hero.runtime.healthChangesThisTurn || 0) + 1;
+    hero.runtime.healthChangesThisGame = (hero.runtime.healthChangesThisGame || 0) + 1;
   }
 
   dealDamageToHero(state, targetHero, amount, ownerSlot = null, source = null) {
@@ -362,9 +370,7 @@ export class GameEngine {
     this.dealDamage(targetHero, amount);
     const healthLost = before - targetHero.health;
     // 追踪生命值变化（用于血肉巨人等动态费用）
-    if (healthLost > 0 && targetHero.runtime) {
-      targetHero.runtime.healthChangesThisTurn = (targetHero.runtime.healthChangesThisTurn || 0) + 1;
-    }
+    if (healthLost > 0) this.recordHeroHealthChange(state, targetHero);
     if (ownerSlot && source && hasKeyword(source, 'lifesteal')) {
       this.healHeroFromLifesteal(state, ownerSlot, amount);
     }
@@ -471,7 +477,9 @@ export class GameEngine {
       let progress = 0;
       if (modifier.rule === 'missingHealth') progress = Math.max(0, 30 - player.health);
       if (modifier.rule === 'selfDamageThisGame') progress = runtime.selfDamageThisGame || 0;
-      if (modifier.rule === 'healthChangedThisTurn') progress = runtime.healthChangesThisTurn || 0;
+      if (modifier.rule === 'healthChangedThisTurn' || modifier.rule === 'healthChangedThisGame') {
+        progress = runtime.healthChangesThisGame ?? runtime.healthChangesThisTurn ?? 0;
+      }
       cost = Math.max(Number(modifier.minimum) || 0, baseCost - progress * (Number(modifier.amountPer) || 1));
     }
     // 对手法术税
@@ -521,7 +529,7 @@ export class GameEngine {
           if (dmgLifesteal) {
             const before = player.health;
             player.health = Math.min(30, player.health + rd);
-            if (player.health !== before) player.runtime.healthChangesThisTurn += 1;
+            if (player.health !== before) this.recordHeroHealthChange(state, player);
           }
         }
         this.log(state, `${player.heroName} 完成任务线第 ${quest.stage} 阶段`);
@@ -540,6 +548,11 @@ export class GameEngine {
     if (!numericAmount) return;
     if (player.runtime?.redirectSelfDamage) {
       this.dealDamage(opponent, numericAmount);
+      // 伤害虽已转移，但本次自伤的计数仍要累加（治疗石、任务进度等依赖此计数）
+      player.runtime.selfDamageThisTurn += numericAmount;
+      player.runtime.selfDamageThisGame += numericAmount;
+      player.runtime.damageTakenThisTurn += numericAmount;
+      this.advanceQuestline(state, actorSlot, numericAmount);
       this.log(state, `${player.heroName} 将 ${numericAmount} 点自伤转移给对手`);
       return;
     }
@@ -566,7 +579,8 @@ export class GameEngine {
       player.maxMana = Math.min(10, player.maxMana + 1);
     }
     player.mana = player.maxMana;
-    player.runtime ||= { selfDamageThisTurn: 0, selfDamageThisGame: 0, damageTakenThisTurn: 0, healthChangesThisTurn: 0, questline: null, redirectSelfDamage: false, delayedDamage: [], graveyard: [], spellTax: 0, spellTaxTurns: 0 };
+    player.runtime ||= { selfDamageThisTurn: 0, selfDamageThisGame: 0, damageTakenThisTurn: 0, healthChangesThisTurn: 0, healthChangesThisGame: 0, questline: null, redirectSelfDamage: false, delayedDamage: [], graveyard: [], spellTax: 0, spellTaxTurns: 0 };
+    player.runtime.healthChangesThisGame ??= player.runtime.healthChangesThisTurn || 0;
     player.runtime.selfDamageThisTurn = 0;
     player.runtime.damageTakenThisTurn = 0;
     player.runtime.healthChangesThisTurn = 0;
@@ -888,7 +902,7 @@ export class GameEngine {
       if (effect.type === 'restoreDamageThisTurn') {
         const before = actorPlayer.health;
         actorPlayer.health = Math.min(30, actorPlayer.health + (actorPlayer.runtime.damageTakenThisTurn || 0));
-        if (actorPlayer.health !== before) actorPlayer.runtime.healthChangesThisTurn += 1;
+        if (actorPlayer.health !== before) this.recordHeroHealthChange(state, actorPlayer);
         continue;
       }
 
@@ -1033,7 +1047,25 @@ export class GameEngine {
         const board = state[normalizedTarget.side].board;
         const startIndex = board.findIndex((minion) => minion.instanceId === normalizedTarget.minionId);
         if (startIndex < 0) continue;
-        const direction = effect.direction || 'right';
+
+        // 炉石规则：两边都有随从时随机选方向，玩家不能选择
+        const hasLeft = startIndex > 0;
+        const hasRight = startIndex < board.length - 1;
+        let direction = effect.direction;
+        if (!direction || direction === 'random') {
+          if (hasLeft && hasRight) {
+            direction = Math.random() < 0.5 ? 'left' : 'right';
+          } else if (hasRight) {
+            direction = 'right';
+          } else if (hasLeft) {
+            direction = 'left';
+          } else {
+            direction = 'right';
+          }
+        }
+        if (direction === 'right' && !hasRight && hasLeft) direction = 'left';
+        if (direction === 'left' && !hasLeft && hasRight) direction = 'right';
+
         let amount = Math.max(1, Number(effect.amount) || 1);
         if (direction === 'left') {
           for (let index = startIndex; index >= 0; index -= 1) {
@@ -1099,7 +1131,9 @@ export class GameEngine {
         const before = targetEntity.health;
         targetEntity.health = Math.min(maxHealth, targetEntity.health + (Number(effect.amount) || 0));
         const amount = targetEntity.health - before;
-        if (targetRef.side === actorSlot && amount > 0) actorPlayer.runtime.healthChangesThisTurn += 1;
+        if (targetRef.side === actorSlot && targetRef.kind === 'hero' && amount > 0) {
+          this.recordHeroHealthChange(state, actorPlayer);
+        }
         this.log(state, `${this.describeTarget(state, targetRef)} 恢复了 ${amount} 点生命值`);
         continue;
       }

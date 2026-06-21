@@ -22,6 +22,7 @@ const runtime = () => ({
   selfDamageThisGame: 0,
   damageTakenThisTurn: 0,
   healthChangesThisTurn: 0,
+  healthChangesThisGame: 0,
   questline: null,
   redirectSelfDamage: false,
   delayedDamage: [],
@@ -29,6 +30,7 @@ const runtime = () => ({
 
 const state = {
   turn: 1,
+  activePlayerId: 'p1',
   actionLog: [],
   player1: {
     socketId: 'p1', heroName: '任务术玩家', health: 100, armor: 0,
@@ -59,7 +61,12 @@ assert.equal(engine.getEffectiveCardCost(state.player1, cardById['hs-1372']), 10
 state.player1.runtime.selfDamageThisGame = 5;
 assert.equal(engine.getEffectiveCardCost(state.player1, cardById['hs-97614']), 4, '被禁锢的恐魔应按本局自伤减费');
 state.player1.runtime.healthChangesThisTurn = 4;
+state.player1.runtime.healthChangesThisGame = 4;
 assert.equal(engine.getEffectiveCardCost(state.player1, cardById['hs-59585']), 6, '血肉巨人应按生命变化次数减费');
+engine.beginTurn(state, 'p1', { increaseMana: false, drawCard: false, readyBoard: false, logTurn: false });
+assert.equal(state.player1.runtime.healthChangesThisTurn, 0, '回合生命变化计数应重置');
+assert.equal(state.player1.runtime.healthChangesThisGame, 4, '本局生命变化计数不应重置');
+assert.equal(engine.getEffectiveCardCost(state.player1, cardById['hs-59585']), 6, '血肉巨人减费应跨回合保留');
 
 assert.equal(cards.some((card) => card.id === 'hs-67547'), true);
 console.log('Questline verification passed: 17-type/30-card preset, 3-stage questline, final reward, and dynamic costs.');

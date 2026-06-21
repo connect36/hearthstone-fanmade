@@ -16,7 +16,7 @@ This project now keeps handoff content in several focused Markdown files:
 
 Project root:
 
-- `/Users/ruiliu/Documents/炉石传说卡组体验`
+- `/Users/ruiliu/Documents/炉石传说游戏自制`
 
 Suggested reading order for another AI:
 
