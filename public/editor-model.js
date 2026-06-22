@@ -1,7 +1,7 @@
 // 编辑器模型转换 — 独立可测试模块
 import { normalizeKeywords } from './keywords.js';
 
-const KNOWN_MECHANICS = ['quickdraw','combo','outcast','finale','manathirst','battlecry','deathrattle','questline','tradeable','temporary','discover','questReward'];
+const KNOWN_MECHANICS = ['quickdraw','combo','outcast','finale','manathirst','spellburst','frenzy','honorableKill','overheal','corrupt','battlecry','deathrattle','questline','tradeable','temporary','discover','questReward'];
 
 function normalizeMechanics(input) {
   if (!input) return [];
@@ -114,12 +114,33 @@ export function editorModelToCard(model, card) {
   return card;
 }
 
+// ── 机制类型限制 ──────────────────────────────────────────
+// 仅允许在特定卡牌类型上的机制（结算触发类必须在场上）
+export const MECHANIC_TYPE_RESTRICTIONS = {
+  spellburst: ['minion'],       // 法术迸发：随从在场，法术触发
+  frenzy: ['minion'],           // 暴怒：随从受伤触发
+  overheal: ['minion'],         // 过量治疗：随从被治疗触发
+  honorableKill: ['minion', 'spell'],  // 荣誉消灭：随从攻击或法术伤害
+};
+
 // ── 类型清理 ──────────────────────────────────────────────
 
 export function cleanFieldsForType(cardType, model) {
   if (cardType === 'spell') {
     model.keywords = [];
-    model.mechanics = (model.mechanics || []).filter(m => m !== 'battlecry' && m !== 'deathrattle');
+    model.mechanics = (model.mechanics || []).filter(m => {
+      // 移除仅限随从的结算触发机制
+      const allowed = MECHANIC_TYPE_RESTRICTIONS[m];
+      if (allowed) return allowed.includes(cardType);
+      return m !== 'battlecry' && m !== 'deathrattle';
+    });
+    // 同时清除不合法机制的 bonusMechanicEffects
+    const legalMechanics = new Set(model.mechanics);
+    if (model.bonusMechanicEffects) {
+      for (const key of Object.keys(model.bonusMechanicEffects)) {
+        if (!legalMechanics.has(key)) delete model.bonusMechanicEffects[key];
+      }
+    }
     for (const group of (model.triggerGroups || [])) {
       if (group.trigger === 'battlecry' || group.trigger === 'deathrattle') group.trigger = 'onPlay';
     }

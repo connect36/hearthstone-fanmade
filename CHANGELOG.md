@@ -1,5 +1,40 @@
 # 更新日志
 
+## 2026-06-21 · P2 第一批：结算触发机制唤醒 + 腐蚀
+
+### 新增机制接入（5种）
+- **法术迸发 Spellburst**：友方法术结算后，场上法术迸发随从触发附效
+  - 触发点：`resolveCardSolo` 玩家施法后 + `executeBossAction` Boss 施法后
+  - `triggerSpellburstSolo(side)` 遍历场上未触发随从，一次性触发
+- **暴怒 Frenzy**：随从首次受到伤害并存活后触发附效（圣盾/剧毒不触发）
+  - 触发点：`dealMinionDamageSolo` 激怒检查之后
+- **荣誉消灭 HonorableKill**：造成的伤害恰好等于目标当前生命值时触发
+  - 双触发点：随从攻击 + 法术/效果伤害
+  - 过量伤害/剧毒/圣盾不触发，对英雄无效
+- **过量治疗 Overheal**：对随从的治疗量超过其缺失生命时触发（含满血治疗）
+  - 触发点：`applyEffectsSolo` heal 分支，治疗结算后
+- **腐蚀 Corrupt**：手牌中打出当前费用更高的牌时，腐蚀牌变为已腐蚀（打出时附效）
+  - `mechanic-runtime.js` 新增 `checkAndApplyCorruption({ playedCard, playedEffectiveCost, hand, getEffectiveCost })`
+  - 比较双方当前**实时费用**（非原始 card.cost）：减费/巨人折扣均生效
+  - 触发点：`resolveCardSolo` 卡牌离手前
+
+### 编辑器集成
+- `mechanics.js` MECH_DEFS 扩充至 10 个（原 5 个 + 新增 5 个）
+- `editor.js` / `editor-model.js` KNOWN_MECHANICS 同步
+- `editor.html` 新增 5 个机制复选框
+
+### 测试卡牌
+- `mt-spellburst`（2费 2/3 法术迸发:抽1）
+- `mt-frenzy`（3费 3/4 暴怒:+2攻）
+- `mt-honorablekill-minion`（4费 3/3 荣誉消灭:抽1）
+- `mt-honorablekill-spell`（3费 打3 荣誉消灭:召唤2/2）
+- `mt-overheal`（3费 2/5 过量治疗:抽1）
+- `mt-corrupt`（2费 2/2 腐蚀:+3/+3）
+
+### 测试通过
+- 88 项检查全部通过：9 语法 + 43 单元 + 25 集成 + 9 编辑器往返 + 11 编辑器模型
+- 新增 17 项 P2 单元测试 + 15 项 P2 集成测试
+
 ## 2026-06-21 · 卡牌机制系统重构 (P0)
 
 ### 基础关键词补齐

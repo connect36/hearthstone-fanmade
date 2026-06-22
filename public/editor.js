@@ -5,7 +5,7 @@ import {
   saveCardOverrides,
 } from './card-overrides.js';
 import { buildKeywordText, normalizeKeywords, summarizeKeywords } from './keywords.js';
-import { extractStructuredEffects, editorModelToCard, cleanFieldsForType, BONUS_EFFECT_TYPES, createEmptyBonusEffect } from './editor-model.js';
+import { extractStructuredEffects, editorModelToCard, cleanFieldsForType, BONUS_EFFECT_TYPES, createEmptyBonusEffect, MECHANIC_TYPE_RESTRICTIONS } from './editor-model.js';
 
 const deckCountMap = Object.fromEntries(starterDeck.map((entry) => [entry.cardId, entry.count]));
 
@@ -107,7 +107,7 @@ function normalizeCard(card) {
   };
 }
 
-const KNOWN_MECHANICS = ['quickdraw','combo','outcast','finale','manathirst','battlecry','deathrattle','questline','tradeable','temporary','discover','questReward'];
+const KNOWN_MECHANICS = ['quickdraw','combo','outcast','finale','manathirst','spellburst','frenzy','honorableKill','overheal','corrupt','battlecry','deathrattle','questline','tradeable','temporary','discover','questReward'];
 
 function normalizeMechanics(input) {
   if (!input) return [];
@@ -121,6 +121,7 @@ const MECHANIC_LABELS = {
   tradeable: '可交易', temporary: '临时牌', discover: '发现',
   lifesteal: '吸血', questReward: '任务奖励',
   quickdraw: '快枪', combo: '连击', outcast: '流放', finale: '压轴', manathirst: '法力渴求',
+  spellburst: '法术迸发', frenzy: '暴怒', honorableKill: '荣誉消灭', overheal: '过量治疗', corrupt: '腐蚀',
 };
 
 // ── Toast 通知 ────────────────────────────────────────────────
@@ -883,6 +884,14 @@ function applyCardTypeDisables(cardType) {
   if (elements.minionFields) {
     elements.minionFields.classList.toggle('is-disabled', isSpell);
   }
+  // 禁用法术牌不能使用的结算触发机制复选框
+  for (const input of elements.fieldMechanics) {
+    const allowed = MECHANIC_TYPE_RESTRICTIONS[input.value];
+    if (allowed) {
+      input.disabled = !allowed.includes(cardType);
+      if (input.disabled) input.checked = false;
+    }
+  }
 }
 
 // ── Schema 校验 ──────────────────────────────────────────────
@@ -958,9 +967,17 @@ function renderEditor() {
   if (elements.fieldManathirstThreshold) {
     elements.fieldManathirstThreshold.value = String(model.manathirstThreshold || 5);
   }
-  // 法术禁用提示
+  // 法术禁用提示：结算触发机制仅限随从
   if (elements.mechanicTypeHint) {
-    elements.mechanicTypeHint.style.display = isSpell ? '' : 'none';
+    const restricted = Object.entries(MECHANIC_TYPE_RESTRICTIONS)
+      .filter(([, types]) => !types.includes(card.type))
+      .map(([mech]) => mech);
+    if (restricted.length) {
+      elements.mechanicTypeHint.textContent = `法术牌不能使用以下机制（仅限随从）：${restricted.join('、')}`;
+      elements.mechanicTypeHint.style.display = '';
+    } else {
+      elements.mechanicTypeHint.style.display = 'none';
+    }
   }
   renderBonusEffectFields(model);
 

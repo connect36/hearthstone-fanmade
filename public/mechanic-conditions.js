@@ -54,9 +54,9 @@ export function checkSpellburst(runtime) {
   return runtime.spellsPlayedThisTurn.length >= 1;
 }
 
-// 狂乱 Frenzy：受到伤害后存活且未触发过
+// 暴怒 Frenzy：受到伤害后存活且未触发过
 export function checkFrenzy(minion) {
-  return checkDamaged(minion) && !minion._frenzyTriggered;
+  return minion.health > 0 && checkDamaged(minion) && !minion._frenzyTriggered;
 }
 
 // 荣誉消灭 Honorable Kill：造成的伤害恰好等于目标生命

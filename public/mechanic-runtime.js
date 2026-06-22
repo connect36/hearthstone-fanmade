@@ -64,3 +64,21 @@ export function recordDamageTaken(runtime, amount) {
 export function recordHealingDone(runtime, amount) {
   runtime.healingDoneThisTurn += amount;
 }
+
+// ── 腐蚀 ────────────────────────────────────────────────────
+// 手牌中带有 corrupt 的卡牌，当打出费用更高的牌时变为"已腐蚀"。
+// 比较双方当前实时费用（playedEffectiveCost），而非原始 card.cost。
+// getEffectiveCost 用于计算手牌中腐蚀牌的当前费用（含减费效果）。
+export function checkAndApplyCorruption({ playedCard, playedEffectiveCost, hand, getEffectiveCost }) {
+  if (!hand?.length) return;
+  const playedCost = playedEffectiveCost ?? (playedCard.cost || 0);
+  for (const card of hand) {
+    if (card.instanceId === playedCard.instanceId) continue;
+    if ((card.mechanics || []).includes('corrupt') && !card.corrupted) {
+      const corruptCardCost = getEffectiveCost ? getEffectiveCost(card) : (card.cost || 0);
+      if (playedCost > corruptCardCost) {
+        card.corrupted = true;
+      }
+    }
+  }
+}

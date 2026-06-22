@@ -10,6 +10,11 @@ const MECH_DEFS = {
   outcast: { name: '流放', fn: checkOutcast },
   finale: { name: '压轴', fn: checkFinale },
   manathirst: { name: '法力渴求', fn: checkManathirst },
+  spellburst: { name: '法术迸发', fn: () => false },
+  frenzy: { name: '暴怒', fn: () => false },
+  honorableKill: { name: '荣誉消灭', fn: () => false },
+  overheal: { name: '过量治疗', fn: () => false },
+  corrupt: { name: '腐蚀', fn: (card) => card.corrupted === true },
 };
 
 export function evaluateCardPlayState(card, side, state, options = {}) {
@@ -38,17 +43,19 @@ export function evaluateCardPlayState(card, side, state, options = {}) {
   result.playable = true;
   result.visualState = 'is-playable';
 
-  // 检查机制
+  // 检查机制（仅手牌可评估的机制进入 active/inactive）
+  const HAND_EVAL_MECHANICS = new Set(['quickdraw','combo','outcast','finale','manathirst','corrupt']);
   const mechanics = card.mechanics || [];
   for (const mech of mechanics) {
     const def = MECH_DEFS[mech];
-    if (!def) continue;
+    if (!def || !HAND_EVAL_MECHANICS.has(mech)) continue;
     let active = false;
     if (mech === 'quickdraw') active = def.fn(card, currentTurn);
     else if (mech === 'combo') active = def.fn(runtime);
     else if (mech === 'outcast') active = def.fn(card, hand);
     else if (mech === 'finale') active = def.fn(cost, currentMana);
     else if (mech === 'manathirst') active = def.fn(maxMana, card.manathirstThreshold || 5);
+    else if (mech === 'corrupt') active = def.fn(card);
 
     if (active) result.activeMechanics.push(mech);
     else result.inactiveMechanics.push(mech);
@@ -62,16 +69,18 @@ export function evaluateCardPlayState(card, side, state, options = {}) {
 
 export function getActiveMechanicLabels(card, hand, runtime, currentTurn, currentMana, maxMana) {
   const r = { playable: true, activeMechanics: [], inactiveMechanics: [], visualState: 'is-playable', effectiveCost: card.cost || 0, reason: '' };
+  const HAND_EVAL_MECHANICS = new Set(['quickdraw','combo','outcast','finale','manathirst','corrupt']);
   const mechanics = card.mechanics || [];
   for (const mech of mechanics) {
     const def = MECH_DEFS[mech];
-    if (!def) continue;
+    if (!def || !HAND_EVAL_MECHANICS.has(mech)) continue;
     let active = false;
     if (mech === 'quickdraw') active = def.fn(card, currentTurn);
     else if (mech === 'combo') active = def.fn(runtime);
     else if (mech === 'outcast') active = def.fn(card, hand);
     else if (mech === 'finale') active = def.fn(card.cost || 0, currentMana);
     else if (mech === 'manathirst') active = def.fn(maxMana, card.manathirstThreshold || 5);
+    else if (mech === 'corrupt') active = def.fn(card);
     if (active) r.activeMechanics.push(mech);
     else r.inactiveMechanics.push(mech);
   }

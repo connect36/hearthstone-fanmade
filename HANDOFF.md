@@ -1,7 +1,7 @@
 # 炉石传说游戏自制 — 项目交接文档
 
 > 日期：2026-06-21  
-> 版本：v2.1  
+> 版本：v2.2  
 > 项目路径：`/Users/ruiliu/Documents/炉石传说游戏自制`
 
 ---
@@ -16,6 +16,7 @@
 - Agent 工作日志系统
 
 ### 1.2 卡牌机制
+
 | 机制 | 状态 |
 |------|------|
 | 战吼/亡语/任务线 | ✅ 完整 |
@@ -30,6 +31,16 @@
 | 延系（Kindred） | ✅ 跨回合追踪 |
 | 手牌增量渲染 | ✅ 防止闪烁 |
 | 敌方手牌/牌库显示 | ✅ 龙战 AI 场景 |
+| 快枪 Quickdraw | ✅ P0 |
+| 连击 Combo | ✅ P0 |
+| 流放 Outcast | ✅ P0 |
+| 压轴 Finale | ✅ P0 |
+| 法力渴求 Manathirst | ✅ P0 |
+| 法术迸发 Spellburst | ✅ P2 第一批 |
+| 暴怒 Frenzy | ✅ P2 第一批 |
+| 荣誉消灭 HonorableKill | ✅ P2 第一批（随从+法术双入口） |
+| 过量治疗 Overheal | ✅ P2 第一批 |
+| 腐蚀 Corrupt | ✅ P2 第一批（实时费用比较） |
 
 ### 1.3 龙战 AI 系统
 - 30 张火焰龙战套牌（Vicious Syndicate 牌表）
@@ -58,7 +69,7 @@
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| `public/app.js` | 5,333 | 主游戏逻辑：Solo/PvP/AI、效果处理器、UI渲染 |
+| `public/app.js` | ~5,400 | 主游戏逻辑：Solo/PvP/AI、效果处理器、UI渲染、机制触发 |
 | `public/styles.css` | 2,540 | 全部样式（大厅/战场/武器/动画/响应式） |
 | `public/index.html` | 360 | 页面结构（大厅/英雄面板/战场/手牌区） |
 
@@ -66,11 +77,20 @@
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| `public/game-data.js` | 379 | 卡牌数据库、套牌定义、场景配置 |
+| `public/game-data.js` | ~440 | 卡牌数据库、套牌定义、场景配置、机制测试卡牌 |
 | `server/game-engine.mjs` | 1,269 | PvP 服务端游戏引擎 |
 | `server.mjs` | 540 | HTTP + WebSocket 服务器 |
 | `server/protocol.mjs` | — | PvP 通信协议定义 |
 | `server/rooms.mjs` | — | PvP 房间管理 |
+
+### 机制系统（新增 P0/P2）
+
+| 文件 | 行数 | 职责 |
+|------|------|------|
+| `public/mechanics.js` | ~90 | 统一卡牌状态评估（visualState + activeMechanics） |
+| `public/mechanic-conditions.js` | ~100 | 10 种条件判断函数 |
+| `public/mechanic-runtime.js` | ~85 | 运行时状态管理 + 腐蚀逻辑 |
+| `public/keywords.js` | — | 12 种关键词 + 正常化 |
 
 ### 龙战 AI 专属
 
@@ -84,12 +104,22 @@
 
 | 文件 | 职责 |
 |------|------|
-| `public/editor.html` / `.js` / `.css` | 卡牌编辑器 |
+| `public/editor.html` / `.js` / `.css` | 卡牌编辑器（支持 17 种机制） |
+| `public/editor-model.js` | 编辑器模型转换、类型限制 |
 | `public/editor-library.html` / `.js` / `.css` | 卡牌库管理 |
 | `public/card-overrides.js` | 编辑器覆盖存储 |
-| `public/keywords.js` | 关键词/种族系统 |
 | `public/animations.js` | 通用动画引擎 |
 | `public/network.js` | PvP WebSocket 客户端 |
+
+### 测试脚本
+
+| 文件 | 职责 |
+|------|------|
+| `scripts/verify-mechanics.mjs` | P0/P1/P2 单元测试（43 项） |
+| `scripts/verify-mechanics-integration.mjs` | P0/P2 集成测试（25 项） |
+| `scripts/verify-editor-mechanics.mjs` | 编辑器往返测试（9 项） |
+| `scripts/verify-editor-model.mjs` | 编辑器模型测试（11 项） |
+| `scripts/verify-questline.mjs` | 任务线验证脚本 |
 
 ### 扩展模块
 
@@ -97,7 +127,6 @@
 |------|------|
 | `public/battlegrounds-view.js` / `.css` | 酒馆战棋界面 |
 | `public/agents-app.js` / `.html` / `.css` | Agent 工作日志 |
-| `scripts/verify-questline.mjs` | 任务线验证脚本 |
 
 ---
 
@@ -133,6 +162,11 @@
 | 卡组导入（deck code） | 数据结构已预留，解析器未实现 |
 | 服务器持久化 | 重启丢失所有房间和进度 |
 | AI 难度选择 | 仅一种难度 |
+| 注入 Infuse | P2 第二批待排期 |
+| 锻造 Forge | P2 第二批待排期 |
+| 快件 Quickdraw | P2 第二批待排期 |
+| 微縮 Miniaturize | P2 第二批待排期 |
+| 扩展 Elusive | P2 第二批待排期 |
 
 ---
 
@@ -143,7 +177,7 @@
 | 路径 | 模式 | 说明 |
 |------|------|------|
 | `/` | 大厅 | 选择游戏模式 |
-| `/?mode=solo&scenario=test` | 本地测试 | 沙包陪练，Boss 每回合+5甲+召唤2/2 |
+| `/?mode=solo&scenario=test` | 本地测试 | 全机制测试场（10 种机制测试卡牌） |
 | `/?mode=solo&scenario=boss` | Boss 战 | 寒炉督战者·柯沃 |
 | `/?mode=solo&scenario=dragon-warrior` | 龙战 AI | 火焰龙战完整套牌 AI 陪练 |
 | `/editor` | 编辑器 | 卡牌数据编辑 |
@@ -172,7 +206,7 @@ node server.mjs
 
 ### 测试场景
 ```bash
-# 本地测试（沙包陪练）
+# 本地测试（全机制测试场）
 open http://127.0.0.1:3301/?mode=solo&scenario=test
 
 # 龙战 AI 陪练
@@ -191,12 +225,26 @@ node --check public/app.js
 node --check public/dragon-warrior-ai.js
 node --check public/dragon-warrior-cards.js
 node --check public/game-data.js
+node --check public/mechanics.js
+node --check public/mechanic-conditions.js
+node --check public/mechanic-runtime.js
+node --check public/editor-model.js
+node --check public/editor.js
 node --check server/game-engine.mjs
 node --check server.mjs
 ```
 
 ### 回归测试
 ```bash
+# 全部测试（88 项）
+npm test
+
+# 单独运行
+node scripts/verify-mechanics.mjs
+node scripts/verify-mechanics-integration.mjs
+node scripts/verify-editor-mechanics.mjs
+node scripts/verify-editor-model.mjs
+
 # 确保三个场景都能加载
 curl -s 'http://127.0.0.1:3301/?mode=solo&scenario=test' | grep -c 'game-card'
 curl -s 'http://127.0.0.1:3301/?mode=solo&scenario=boss' | grep -c 'game-card'
@@ -208,6 +256,8 @@ curl -s 'http://127.0.0.1:3301/?mode=solo&scenario=dragon-warrior' | grep -c 'en
 ## 7. 下一步任务
 
 ### P0（阻塞线上）
+- [x] 卡牌机制系统重构（快枪/连击/流放/压轴/法力渴求）
+- [x] 基础关键词补齐（12 种）
 - [ ] 完整束搜索（深度 2-4），显著提升 AI 强度
 - [ ] 手机端适配武器/地标/敌方手牌显示
 
@@ -218,6 +268,12 @@ curl -s 'http://127.0.0.1:3301/?mode=solo&scenario=dragon-warrior' | grep -c 'en
 - [ ] 修复已知问题清单中的 1-5 项
 
 ### P2（功能增强）
+- [x] ~~法术迸发 Spellburst~~ ✅ 2026-06-21
+- [x] ~~暴怒 Frenzy~~ ✅ 2026-06-21
+- [x] ~~荣誉消灭 HonorableKill~~ ✅ 2026-06-21
+- [x] ~~过量治疗 Overheal~~ ✅ 2026-06-21
+- [x] ~~腐蚀 Corrupt~~ ✅ 2026-06-21
+- [ ] 注入 Infuse / 锻造 Forge / 快件 Quickdraw / 微縮 Miniaturize / 扩展 Elusive（P2 第二批）
 - [ ] Deck code 导入/导出
 - [ ] AI 难度选择（简单/普通/困难）
 - [ ] 服务器游戏状态持久化
@@ -240,6 +296,12 @@ curl -s 'http://127.0.0.1:3301/?mode=solo&scenario=dragon-warrior' | grep -c 'en
 | Boss 回合 | `app.js:3615` |
 | 龙战 Boss 回合 | `app.js:3726` |
 | 效果处理入口 | `app.js:2731` |
+| 法术迸发触发 | `app.js:3644` triggerSpellburstSolo |
+| 暴怒触发 | `app.js:2639` dealMinionDamageSolo |
+| 荣誉消灭（攻击） | `app.js:2690` dealMinionDamageSolo |
+| 荣誉消灭（法术） | `app.js:3387` applyEffectsSolo |
+| 过量治疗 | `app.js:3426` applyEffectsSolo |
+| 腐蚀检查 | `app.js:3557` resolveCardSolo |
 | 黑暗之赐 | `app.js:3708` |
 | 武器渲染 | `app.js:4220` |
 | 敌方手牌渲染 | `app.js:4253` |
@@ -252,6 +314,9 @@ curl -s 'http://127.0.0.1:3301/?mode=solo&scenario=dragon-warrior' | grep -c 'en
 | 英雄技能渲染 | `app.js:4182` |
 | 起手调度 | `app.js:1356` |
 | PvP 引擎 | `game-engine.mjs:1` |
+| 机制评估 | `mechanics.js` |
+| 条件判断 | `mechanic-conditions.js` |
+| 运行时状态 | `mechanic-runtime.js` |
 
 ---
 

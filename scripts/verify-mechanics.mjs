@@ -1,6 +1,7 @@
 // 机制验证测试 — P0/P0.5
 import { evaluateCardPlayState, getActiveMechanicLabels } from '../public/mechanics.js';
 import { normalizeKeywords, hasKeyword, getMaxAttacksPerTurn } from '../public/keywords.js';
+import { checkSpellburst, checkFrenzy, checkHonorableKill, checkOverheal } from '../public/mechanic-conditions.js';
 
 let passed = 0, failed = 0;
 function test(name, fn) {
@@ -150,6 +151,96 @@ test('combo mana-insufficient stays locked', () => {
   const c = { cost:5, instanceId:'c7', mechanics:['combo'] };
   const r = evaluateCardPlayState(c, 'player', {}, { hand:[c], currentTurn:3, currentMana:2, phase:'player', effectiveCost:5, runtime:makeRuntime([{instanceId:'prev'}] ) });
   assert(r.visualState === 'is-locked');
+});
+
+console.log('\n=== P2: 法术迸发 ===');
+test('spellburst condition true when spell played', () => {
+  const rt = makeRuntime();
+  rt.spellsPlayedThisTurn = ['spell1'];
+  assert(checkSpellburst(rt) === true);
+});
+test('spellburst condition false without spell', () => {
+  const rt = makeRuntime();
+  assert(checkSpellburst(rt) === false);
+});
+test('spellburst never active in hand — board trigger only', () => {
+  const c = { cost:2, instanceId:'sb1', mechanics:['spellburst'] };
+  const rt = makeRuntime();
+  rt.spellsPlayedThisTurn = ['s1'];
+  const r = evaluateCardPlayState(c, 'player', {}, { hand:[c], currentTurn:3, currentMana:5, phase:'player', effectiveCost:2, runtime:rt });
+  assert(r.visualState === 'is-playable', 'spellburst must not turn hand card yellow');
+  assert(!r.activeMechanics.includes('spellburst'), 'spellburst must not be in activeMechanics');
+  assert(!r.inactiveMechanics.includes('spellburst'), 'spellburst must not be in inactiveMechanics');
+});
+test('frenzy condition true when damaged and not triggered', () => {
+  const m = { health:2, maxHealth:4, _frenzyTriggered: false };
+  assert(checkFrenzy(m) === true);
+});
+test('frenzy condition false when full health', () => {
+  const m = { health:4, maxHealth:4, _frenzyTriggered: false };
+  assert(checkFrenzy(m) === false);
+});
+test('frenzy condition false when already triggered', () => {
+  const m = { health:2, maxHealth:4, _frenzyTriggered: true };
+  assert(checkFrenzy(m) === false);
+});
+test('frenzy condition false when dead (health=0)', () => {
+  const m = { health:0, maxHealth:4, _frenzyTriggered: false };
+  assert(checkFrenzy(m) === false);
+});
+test('frenzy never active in hand', () => {
+  const c = { cost:3, instanceId:'fz1', mechanics:['frenzy'] };
+  const r = evaluateCardPlayState(c, 'player', {}, { hand:[c], currentTurn:3, currentMana:5, phase:'player', effectiveCost:3, runtime:makeRuntime() });
+  assert(r.visualState === 'is-playable');
+  assert(!r.activeMechanics.includes('frenzy'));
+});
+
+console.log('\n=== P2: 荣誉消灭 ===');
+test('honorableKill true when damage equals target health', () => {
+  assert(checkHonorableKill(3, 3) === true);
+});
+test('honorableKill false when overkill', () => {
+  assert(checkHonorableKill(5, 3) === false);
+});
+test('honorableKill false when not enough', () => {
+  assert(checkHonorableKill(2, 3) === false);
+});
+test('honorableKill never active in hand', () => {
+  const c = { cost:4, instanceId:'hk1', mechanics:['honorableKill'] };
+  const r = evaluateCardPlayState(c, 'player', {}, { hand:[c], currentTurn:3, currentMana:5, phase:'player', effectiveCost:4, runtime:makeRuntime() });
+  assert(r.visualState === 'is-playable');
+  assert(!r.activeMechanics.includes('honorableKill'));
+});
+
+console.log('\n=== P2: 过量治疗 ===');
+test('overheal true when heal exceeds missing', () => {
+  assert(checkOverheal(5, 3) === true);
+});
+test('overheal false when heal equals missing', () => {
+  assert(checkOverheal(3, 3) === false);
+});
+test('overheal true when full health (missing=0)', () => {
+  assert(checkOverheal(1, 0) === true);
+});
+test('overheal never active in hand', () => {
+  const c = { cost:3, instanceId:'oh1', mechanics:['overheal'] };
+  const r = evaluateCardPlayState(c, 'player', {}, { hand:[c], currentTurn:3, currentMana:5, phase:'player', effectiveCost:3, runtime:makeRuntime() });
+  assert(r.visualState === 'is-playable');
+  assert(!r.activeMechanics.includes('overheal'));
+});
+
+console.log('\n=== P2: 腐蚀 ===');
+test('corrupt visual state when corrupted', () => {
+  const c = { cost:2, instanceId:'cr1', mechanics:['corrupt'], corrupted: true };
+  const r = evaluateCardPlayState(c, 'player', {}, { hand:[c], currentTurn:3, currentMana:5, phase:'player', effectiveCost:2, runtime:makeRuntime() });
+  assert(r.visualState === 'is-trigger-ready');
+  assert(r.activeMechanics.includes('corrupt'));
+});
+test('corrupt inactive when not corrupted', () => {
+  const c = { cost:2, instanceId:'cr2', mechanics:['corrupt'], corrupted: false };
+  const r = evaluateCardPlayState(c, 'player', {}, { hand:[c], currentTurn:3, currentMana:5, phase:'player', effectiveCost:2, runtime:makeRuntime() });
+  assert(r.visualState === 'is-playable');
+  assert(!r.activeMechanics.includes('corrupt'));
 });
 
 console.log(`\n${'='.repeat(40)}`);

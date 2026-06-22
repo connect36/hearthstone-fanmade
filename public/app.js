@@ -15,7 +15,8 @@ import { hideBattlegroundsView, renderBattlegroundsView } from './battlegrounds-
 import { decideDragonWarriorAction, decideDragonWarriorTurn, mulliganDragonWarrior } from './dragon-warrior-ai.js';
 import { dragonWarriorDeck } from './dragon-warrior-cards.js';
 import { evaluateCardPlayState } from './mechanics.js';
-import { createCardInstance, markCardEnteredHand, recordCardPlayed, clearTurnState } from './mechanic-runtime.js';
+import { checkHonorableKill, checkOverheal } from './mechanic-conditions.js';
+import { createCardInstance, markCardEnteredHand, recordCardPlayed, clearTurnState, checkAndApplyCorruption } from './mechanic-runtime.js';
 import './animations.js';
 
 // ============================================
@@ -120,11 +121,11 @@ const MECHANICS_TEST_SCENARIO = Object.freeze({
   scenarioId: 'mechanics-test',
   id: 'mechanics_test',
   title: '炉边酒馆',
-  subtitle: '机制测试',
-  description: '快枪/连击/流放/压轴测试场景。玩家使用4种测试牌。',
+  subtitle: '全机制测试',
+  description: '快枪/连击/流放/压轴/法术迸发/暴怒/荣誉消灭/过量治疗/腐蚀 测试场景。',
   modeLabel: '机制测试中',
   turnLimit: null,
-  rulesText: '这个场景用于测试卡牌机制：快枪、连击、流放、压轴。',
+  rulesText: '这个场景用于测试全部卡牌机制：快枪、连击、流放、压轴、法术迸发、暴怒、荣誉消灭、过量治疗、腐蚀。Boss 会在特定回合召唤靶子或施放全场伤害辅助测试。',
   player: {
     ...encounter.player,
   },
@@ -133,11 +134,16 @@ const MECHANICS_TEST_SCENARIO = Object.freeze({
     heroHealth: 30,
     heroArmor: 0,
     heroPower: { name: '测试', cost: 2, text: '测试', effects: [] },
-    passive: { name: '测试', text: '测试Boss。' },
+    passive: { name: '测试', text: '测试Boss。T2全场1伤、T4召唤0/3靶、T6召唤0/2靶。' },
     aiBias: { style: 'sandbox', priorities: [] },
-    turnScript: [{ turn: 1, action: 'armor', amount: 2, line: '获得2点护甲' }],
+    turnScript: [
+      { turn: 1, action: 'armor', amount: 2, line: '获得2点护甲' },
+      { turn: 2, action: 'aoe', amount: 1, target: 'allMinions', line: '对所有随从造成1点伤害（测试暴怒）' },
+      { turn: 4, action: 'summon', minion: { name: '荣誉靶(0/3)', attack: 0, health: 3 }, line: '召唤0/3靶子供荣誉消灭测试' },
+      { turn: 6, action: 'summon', minion: { name: '荣誉靶(0/2)', attack: 0, health: 2 }, line: '召唤0/2靶子供超杀不得触发测试' },
+    ],
   },
-  objectives: [{ id: 'mech-test', type: 'test', text: '测试快枪/连击/流放/压轴。' }],
+  objectives: [{ id: 'mech-test', type: 'test', text: '测试全部卡牌机制。' }],
 });
 
 const SOLO_SCENARIOS = Object.freeze({
@@ -746,15 +752,7 @@ function isQuestlineCard(card) {
 function buildDeck() {
   const scenario = getSoloScenario();
   if (scenario.scenarioId === 'mechanics-test') {
-    const deck = [];
-    for (const entry of mechanicTestDeck) {
-      const card = effectiveCardById[entry.cardId];
-      if (!card) continue;
-      for (let i = 0; i < (entry.count || 1); i++) {
-        deck.push({ ...card, instanceId: uid(`mt-${card.id}-${i}`) });
-      }
-    }
-    return shuffle(deck);
+    return buildMechanicsTestDeck();
   }
   const questCards = [];
   const normalCards = [];
@@ -791,9 +789,14 @@ function cloneMinion(source, side, overrides = {}) {
     text: overrides.text ?? source.text ?? buildKeywordText(keywords),
     effects: cloneValue(overrides.effects ?? source.effects ?? []),
     mechanics: cloneValue(overrides.mechanics ?? source.mechanics ?? []),
+    bonusMechanicEffects: cloneValue(
+      overrides.bonusMechanicEffects ?? source.bonusMechanicEffects ?? {}
+    ),
     attack,
     health,
     maxHealth: health,
+    _spellburstTriggered: false,
+    _frenzyTriggered: false,
     ...runtimeState,
   };
 }
@@ -1489,6 +1492,51 @@ function buildDragonWarriorBossDeck() {
     deck.push({ ...card, instanceId: uid(`dw-${cardId}-${usedCount[cardId]}`) });
   }
   // DW_DRAW_ORDER[0]=最先抽 → 反转后 push 顺序变成 pop 顺序
+  deck.reverse();
+  return deck;
+}
+
+// ── 机制测试固定牌序 ──────────────────────────────────────
+// index 0 = 最先抽（起手第1张），index 3 = T1抽牌
+// 起手3张: [0,1,2] — mt-spellburst, mt-frenzy, mt-poke
+// T1抽: [3] mt-outcast · T2抽: [4] mt-combo · T3抽: [5] mt-honorablekill-minion
+// T4抽: [6] mt-overheal · T5抽: [7] mt-heal
+const MECHANICS_DRAW_ORDER = [
+  'mt-spellburst',             // 0: 起手1 — T2打出 (2费), Boss AOE后2/2
+  'mt-frenzy',                 // 1: 起手2 — T3打出 (3费)
+  'mt-poke',                   // 2: 起手3 — T3触发暴怒 / T6戳过量治疗
+  'mt-outcast',                // 3: T1抽 — T1可打 (1费)
+  'mt-combo',                  // 4: T2抽 — T3施放触发法术迸发
+  'mt-honorablekill-minion',   // 5: T3抽 — T4打出, T5攻击0/3靶
+  'mt-overheal',               // 6: T4抽 — T5打出 (3费)
+  'mt-heal',                   // 7: T5抽 — T7治疗触发过量治疗
+  'mt-corrupt',                // 8: T6抽 — 腐蚀测试
+  'mt-poke',                   // 9: T7抽 — 第二张轻戳
+  'mt-honorablekill-spell',    // 10: T8抽
+  'mt-quickdraw',              // 11: T9抽
+  'mt-finale',                 // 12
+  'mt-spellburst',             // 13: 第二张法术迸发
+  'mt-frenzy',                 // 14: 第二张暴怒
+  'mt-heal',                   // 15: 第二张治疗
+  'mt-overheal',               // 16: 第二张过量治疗
+  'mt-corrupt',                // 17: 第二张腐蚀
+  'mt-honorablekill-minion',   // 18: 第二张荣誉消灭随从
+  'mt-honorablekill-spell',    // 19: 第二张荣誉消灭法术
+  'mt-quickdraw',              // 20: 第二张快枪
+  'mt-combo',                  // 21: 第二张连击
+  'mt-finale',                 // 22: 第二张压轴
+  'mt-outcast',                // 23: 第二张流放
+];
+
+function buildMechanicsTestDeck() {
+  const deck = [];
+  const usedCount = {};
+  for (const cardId of MECHANICS_DRAW_ORDER) {
+    const card = effectiveCardById[cardId];
+    if (!card) continue;
+    usedCount[cardId] = (usedCount[cardId] || 0) + 1;
+    deck.push({ ...card, instanceId: uid(`mt-${cardId}-${usedCount[cardId]}`) });
+  }
   deck.reverse();
   return deck;
 }
@@ -2591,6 +2639,34 @@ function dealMinionDamageSolo(attacker, attackerSide, defender, amount) {
     }
   }
 
+  // 暴怒：首次受伤存活后触发
+  if (actualDamage > 0 && defender.health > 0 &&
+      (defender.mechanics || []).includes('frenzy') && !defender._frenzyTriggered) {
+    defender._frenzyTriggered = true;
+    const effects = defender.bonusMechanicEffects?.frenzy;
+    if (effects?.length) {
+      applyEffectsSolo(effects, defender.side || 'player', {
+        primaryTarget: null, primaryTargets: {}, chosenTarget: null,
+        trigger: 'onPlay', sourceCard: defender,
+      });
+      pushSoloLog(`暴怒触发：${defender.name}`);
+    }
+  }
+
+  // 荣誉消灭：攻击伤害恰好击杀 (随从攻击) — 比较原始伤害，非截断值
+  if (amount > 0 && defender.health <= 0 &&
+      attacker?.mechanics?.includes('honorableKill') &&
+      checkHonorableKill(amount, beforeHealth)) {
+    const effects = attacker.bonusMechanicEffects?.honorableKill;
+    if (effects?.length) {
+      applyEffectsSolo(effects, attackerSide, {
+        primaryTarget: null, primaryTargets: {}, chosenTarget: null,
+        trigger: 'onPlay', sourceCard: attacker,
+      });
+      pushSoloLog(`荣誉消灭触发：${attacker.name}`);
+    }
+  }
+
   return actualDamage;
 }
 
@@ -3311,11 +3387,25 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
         animator?.pulseStat?.(targetHealthPillSolo(targetRef.side));
         floatCombatTextOnTarget(targetHeroAreaSolo(targetRef.side), amount, 'damage');
       } else {
-        dealMinionDamageSolo(null, actorSide, targetEntity, amount);
+        const beforeHealth = targetEntity.health;
+        const dmg = dealMinionDamageSolo(null, actorSide, targetEntity, amount);
         pushSoloLog(`${describeTargetRefSolo(targetRef)} 受到了 ${amount} 点伤害。`);
         animator?.hit?.(getTargetAreaSolo(targetRef));
         floatCombatTextOnTarget(getTargetAreaSolo(targetRef), amount, 'damage');
         processSoloDeaths(targetRef.side);
+        // 荣誉消灭：法术/效果伤害恰好击杀 — 比较原始伤害，非截断值
+        if (amount > 0 && targetEntity.health <= 0 &&
+            context.sourceCard?.mechanics?.includes('honorableKill') &&
+            checkHonorableKill(amount, beforeHealth)) {
+          const hkEffects = context.sourceCard.bonusMechanicEffects?.honorableKill;
+          if (hkEffects?.length) {
+            applyEffectsSolo(hkEffects, actorSide, {
+              primaryTarget: null, primaryTargets: {}, chosenTarget: null,
+              trigger: 'onPlay', sourceCard: context.sourceCard,
+            });
+            pushSoloLog(`荣誉消灭触发：${context.sourceCard.name}`);
+          }
+        }
       }
       continue;
     }
@@ -3335,6 +3425,23 @@ function applyEffectsSolo(effects, actorSide, context = { primaryTarget: null, p
       floatCombatTextOnTarget(getTargetAreaSolo(targetRef), healed, 'heal');
       if (targetRef.kind === 'hero') {
         animator?.pulseStat?.(targetHealthPillSolo(targetRef.side));
+      }
+      // 过量治疗检查
+      if (targetRef.kind === 'minion' &&
+          targetEntity.mechanics?.includes('overheal')) {
+        const maxHealth = targetEntity.maxHealth || targetEntity.health;
+        const missingHealth = maxHealth - (targetEntity.health - healed);
+        const healAmount = Number(effect.amount) || 0;
+        if (checkOverheal(healAmount, missingHealth)) {
+          const ohEffects = targetEntity.bonusMechanicEffects?.overheal;
+          if (ohEffects?.length) {
+            applyEffectsSolo(ohEffects, actorSide, {
+              primaryTarget: null, primaryTargets: {}, chosenTarget: null,
+              trigger: 'onPlay', sourceCard: targetEntity,
+            });
+            pushSoloLog(`过量治疗触发：${targetEntity.name}`);
+          }
+        }
       }
       continue;
     }
@@ -3450,6 +3557,13 @@ function resolveCardSolo(cardInstance, chosenDamageTarget = null) {
   const triggeredMechanics = [...evalResult.activeMechanics];
 
   state.solo.player.mana -= effectiveCost;
+  // 腐蚀检查（卡牌离手前）— 比较当前实时费用
+  checkAndApplyCorruption({
+    playedCard: cardInstance,
+    playedEffectiveCost: effectiveCost,
+    hand: state.solo.player.hand,
+    getEffectiveCost: getEffectiveCardCostSolo,
+  });
   state.solo.player.hand = state.solo.player.hand.filter((card) => card.instanceId !== cardInstance.instanceId);
   clearPendingSpellSolo();
 
@@ -3460,6 +3574,8 @@ function resolveCardSolo(cardInstance, chosenDamageTarget = null) {
     else if (mech === 'outcast') pushSoloLog(`流放触发：${cardInstance.name}`);
     else if (mech === 'finale') pushSoloLog(`压轴触发：${cardInstance.name}`);
     else if (mech === 'manathirst') pushSoloLog(`法力渴求触发：${cardInstance.name}`);
+    else if (mech === 'spellburst') pushSoloLog(`法术迸发触发：${cardInstance.name}`);
+    else if (mech === 'corrupt') pushSoloLog(`腐蚀触发：${cardInstance.name}`);
   }
 
   // ── 执行机制效果 ────────────────────────────────────────
@@ -3503,6 +3619,8 @@ function resolveCardSolo(cardInstance, chosenDamageTarget = null) {
       trigger: 'onPlay',
       sourceCard: cardInstance,
     });
+    // 法术迸发检查
+    triggerSpellburstSolo('player');
   }
 
   if (!checkSoloOutcome()) {
@@ -3522,6 +3640,24 @@ function executeMechanicEffects(cardInstance, triggeredMechanics, chosenTarget) 
         primaryTarget: null, primaryTargets: {}, chosenTarget: chosenTarget || null,
         trigger: 'onPlay', sourceCard: cardInstance,
       });
+    }
+  }
+}
+
+// ── 法术迸发触发 ──────────────────────────────────────────────
+function triggerSpellburstSolo(side) {
+  const board = state.solo[side].board;
+  for (const minion of board) {
+    if ((minion.mechanics || []).includes('spellburst') && !minion._spellburstTriggered) {
+      const effects = minion.bonusMechanicEffects?.spellburst;
+      if (effects?.length) {
+        minion._spellburstTriggered = true;
+        applyEffectsSolo(effects, side, {
+          primaryTarget: null, primaryTargets: {}, chosenTarget: null,
+          trigger: 'onPlay', sourceCard: minion,
+        });
+        pushSoloLog(`法术迸发触发：${minion.name}`);
+      }
     }
   }
 }
@@ -4002,6 +4138,8 @@ async function executeBossAction(action, boss, bossHeroPower) {
           primaryTarget: null, primaryTargets: {}, chosenTarget: action.target,
           trigger: 'onPlay', sourceCard: card,
         });
+        // Boss 法术迸发检查
+        triggerSpellburstSolo('boss');
       }
       break;
     }
